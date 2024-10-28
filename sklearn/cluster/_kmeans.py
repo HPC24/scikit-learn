@@ -628,6 +628,8 @@ def _kmeans_single_lloyd(
     verbose=False,
     tol=1e-4,
     n_threads=1,
+    use_assign_centroids = False,
+    use_assign_centroids_gemm = False
 ):
     """A single run of k-means lloyd, assumes preparation completed prior.
 
@@ -705,6 +707,8 @@ def _kmeans_single_lloyd(
             labels,
             center_shift,
             n_threads,
+            use_assign_centroids,
+            use_assign_centroids_gemm
         )
 
         if verbose:
@@ -1388,6 +1392,9 @@ class KMeans(_BaseKMeans):
         random_state=None,
         copy_x=True,
         algorithm="lloyd",
+        use_assign_centroids = False,
+        use_assign_centroids_gemm = False
+        
     ):
         super().__init__(
             n_clusters=n_clusters,
@@ -1398,9 +1405,11 @@ class KMeans(_BaseKMeans):
             verbose=verbose,
             random_state=random_state,
         )
-
+        
         self.copy_x = copy_x
         self.algorithm = algorithm
+        self.use_assign_centroids = use_assign_centroids
+        self.use_assign_centroids_gemm = use_assign_centroids_gemm
 
     def _check_params_vs_input(self, X):
         super()._check_params_vs_input(X, default_n_init=10)
@@ -1516,6 +1525,8 @@ class KMeans(_BaseKMeans):
                 verbose=self.verbose,
                 tol=self._tol,
                 n_threads=self._n_threads,
+                use_assign_centroids = self.use_assign_centroids,
+                use_assign_centroids_gemm = self.use_assign_centroids_gemm
             )
 
             # determine if these results are the best so far

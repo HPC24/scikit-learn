@@ -1,4 +1,5 @@
 # Licence: BSD 3 clause
+# cython: boundscheck=False, wraparound=False
 
 from cython cimport floating
 from cython.parallel import prange, parallel
@@ -29,6 +30,8 @@ def lloyd_iter_chunked_dense(
         int[::1] labels,                     # OUT
         floating[::1] center_shift,          # OUT
         int n_threads,
+        bint use_assign_centroids,
+        bint use_assign_centroids_gemm,
         bint update_centers=True):
     """Single iteration of K-means lloyd algorithm with dense input.
 
@@ -104,59 +107,38 @@ def lloyd_iter_chunked_dense(
 
         omp_lock_t lock
 
-    # count remainder chunk in total number of chunks
-    n_chunks += n_samples != n_chunks * n_samples_chunk
 
-    # number of threads should not be bigger than number of chunks
-    n_threads = min(n_threads, n_chunks)
+    if use_assign_centroids:
 
-    if update_centers:
+        print("Using Assign_centroids Implementation")
         memset(&centers_new[0, 0], 0, n_clusters * n_features * sizeof(floating))
         memset(&weight_in_clusters[0], 0, n_clusters * sizeof(floating))
+
+        assign_centroids(
+                        X,
+                        centers_old,
+                        labels,
+                        n_samples,
+                        n_features,
+                        n_clusters,
+                        n_threads)
+
         omp_init_lock(&lock)
 
-    with nogil, parallel(num_threads=n_threads):
-        # thread local buffers
-        centers_new_chunk = <floating*> calloc(n_clusters * n_features, sizeof(floating))
-        weight_in_clusters_chunk = <floating*> calloc(n_clusters, sizeof(floating))
-        pairwise_distances_chunk = <floating*> malloc(n_samples_chunk * n_clusters * sizeof(floating))
+        update_centroids(
+                        X,
+                        centers_new,
+                        labels,
+                        sample_weight,
+                        weight_in_clusters,
+                        n_samples,
+                        n_features,
+                        n_clusters,
+                        n_threads,
+                        lock)
 
-        for chunk_idx in prange(n_chunks, schedule='static'):
-            start = chunk_idx * n_samples_chunk
-            if chunk_idx == n_chunks - 1 and n_samples_rem > 0:
-                end = start + n_samples_rem
-            else:
-                end = start + n_samples_chunk
-
-            _update_chunk_dense(
-                X[start: end],
-                sample_weight[start: end],
-                centers_old,
-                centers_squared_norms,
-                labels[start: end],
-                centers_new_chunk,
-                weight_in_clusters_chunk,
-                pairwise_distances_chunk,
-                update_centers)
-
-        # reduction from local buffers.
-        if update_centers:
-            # The lock is necessary to avoid race conditions when aggregating
-            # info from different thread-local buffers.
-            omp_set_lock(&lock)
-            for j in range(n_clusters):
-                weight_in_clusters[j] += weight_in_clusters_chunk[j]
-                for k in range(n_features):
-                    centers_new[j, k] += centers_new_chunk[j * n_features + k]
-
-            omp_unset_lock(&lock)
-
-        free(centers_new_chunk)
-        free(weight_in_clusters_chunk)
-        free(pairwise_distances_chunk)
-
-    if update_centers:
         omp_destroy_lock(&lock)
+
         _relocate_empty_clusters_dense(
             X, sample_weight, centers_old, centers_new, weight_in_clusters, labels
         )
@@ -164,6 +146,283 @@ def lloyd_iter_chunked_dense(
         _average_centers(centers_new, weight_in_clusters)
         _center_shift(centers_old, centers_new, center_shift)
 
+
+    elif use_assign_centroids_gemm:
+
+        print("Using Assign_centroids_gemm Implementation")
+        memset(&centers_new[0, 0], 0, n_clusters * n_features * sizeof(floating))
+        memset(&weight_in_clusters[0], 0, n_clusters * sizeof(floating))
+
+        assign_centroids_gemm(
+                        X,
+                        centers_old,
+                        labels,
+                        centers_squared_norms,
+                        n_samples,
+                        n_features,
+                        n_clusters,
+                        n_threads)
+
+        omp_init_lock(&lock)
+
+        update_centroids(
+                        X,
+                        centers_new,
+                        labels,
+                        sample_weight,
+                        weight_in_clusters,
+                        n_samples,
+                        n_features,
+                        n_clusters,
+                        n_threads,
+                        lock)
+
+        omp_destroy_lock(&lock)
+
+        _relocate_empty_clusters_dense(
+                X, sample_weight, centers_old, centers_new, weight_in_clusters, labels
+            )
+
+        _average_centers(centers_new, weight_in_clusters)
+        _center_shift(centers_old, centers_new, center_shift)
+
+        
+    else:
+
+        # count remainder chunk in total number of chunks
+        n_chunks += n_samples != n_chunks * n_samples_chunk
+
+        # number of threads should not be bigger than number of chunks
+        n_threads = min(n_threads, n_chunks)
+
+        if update_centers:
+            memset(&centers_new[0, 0], 0, n_clusters * n_features * sizeof(floating))
+            memset(&weight_in_clusters[0], 0, n_clusters * sizeof(floating))
+            omp_init_lock(&lock)
+
+        with nogil, parallel(num_threads=n_threads):
+            # thread local buffers
+            centers_new_chunk = <floating*> calloc(n_clusters * n_features, sizeof(floating))
+            weight_in_clusters_chunk = <floating*> calloc(n_clusters, sizeof(floating))
+            pairwise_distances_chunk = <floating*> malloc(n_samples_chunk * n_clusters * sizeof(floating))
+
+            for chunk_idx in prange(n_chunks, schedule='static'):
+                start = chunk_idx * n_samples_chunk
+                if chunk_idx == n_chunks - 1 and n_samples_rem > 0:
+                    end = start + n_samples_rem
+                else:
+                    end = start + n_samples_chunk
+
+                _update_chunk_dense(
+                    X[start: end],
+                    sample_weight[start: end],
+                    centers_old,
+                    centers_squared_norms,
+                    labels[start: end],
+                    centers_new_chunk,
+                    weight_in_clusters_chunk,
+                    pairwise_distances_chunk,
+                    update_centers)
+
+            # reduction from local buffers.
+            if update_centers:
+                # The lock is necessary to avoid race conditions when aggregating
+                # info from different thread-local buffers.
+                omp_set_lock(&lock)
+                for j in range(n_clusters):
+                    weight_in_clusters[j] += weight_in_clusters_chunk[j]
+                    for k in range(n_features):
+                        centers_new[j, k] += centers_new_chunk[j * n_features + k]
+
+                omp_unset_lock(&lock)
+
+            free(centers_new_chunk)
+            free(weight_in_clusters_chunk)
+            free(pairwise_distances_chunk)
+
+        if update_centers:
+            omp_destroy_lock(&lock)
+            _relocate_empty_clusters_dense(
+                X, sample_weight, centers_old, centers_new, weight_in_clusters, labels
+            )
+
+            _average_centers(centers_new, weight_in_clusters)
+            _center_shift(centers_old, centers_new, center_shift)
+
+cdef inline floating distance_calculation(
+    const floating[:, ::1] X,
+    const floating[:, ::1] centers_old,
+    const int point,
+    const int cluster,
+    const int n_features) noexcept nogil:
+
+    cdef:
+        int feature
+        floating distance = 0, diff
+
+    for feature in range(n_features):
+        diff = X[point, feature] - centers_old[cluster, feature]
+        distance += diff * diff
+
+    return distance
+
+cdef assign_centroids(
+    const floating[:, ::1] X,                   # IN
+    const floating[:, ::1] centers_old,          # IN
+    int [::1] labels,                           # IN
+    const int n_samples,                              # IN
+    const int n_features,                             # IN
+    const int n_clusters,                             # In
+    const int n_threads):                             # IN 
+
+    cdef:
+        int point, cluster, label
+        floating max_val, distance, min_sq_dist
+
+    if floating is float:
+        max_val = FLT_MAX
+    elif floating is double:
+        max_val = DBL_MAX
+    else:
+        raise TypeError("Unsupported floating type")
+
+    # with cython.boundscheck(False), cython.wraparound(False):
+
+    for point in prange(n_samples, schedule = 'static', num_threads = n_threads, nogil=True):
+        label = 0
+        min_sq_dist = max_val
+
+        for cluster in range(n_clusters):
+
+            distance = distance_calculation(X, centers_old, point, cluster, n_features)
+
+            if distance < min_sq_dist:
+
+                min_sq_dist = distance
+                label = cluster
+
+        labels[point] = label
+
+        
+cdef assign_centroids_gemm(
+    const floating[:, ::1] X,                   # IN
+    const floating[:, ::1] centers_old,          # IN
+    int [::1] labels,                           # IN
+    const floating[::1] centers_squared_norms,   # IN
+    int n_samples,                              # IN
+    int n_features,                             # IN
+    int n_clusters,                             # In
+    int n_threads):                             # IN 
+
+    cdef:
+        int i, j, row_offset, label
+        floating max_val, min_sq_dist
+        floating distance
+        floating* pairwise_distances = <floating*> malloc(n_samples * n_clusters * sizeof(floating))
+
+    if floating is float:
+        max_val = FLT_MAX
+    elif floating is double:
+        max_val = DBL_MAX
+    else:
+        raise TypeError("Unsupported floating type")
+
+    # with boundscheck(False), wraparound(False):
+    for i in prange(n_samples, schedule = 'static', num_threads = n_threads, nogil = True):
+        row_offset = i * n_clusters
+        for j in range(n_clusters):
+            pairwise_distances[row_offset + j] = centers_squared_norms[j]
+
+
+    _gemm(RowMajor, NoTrans, Trans, n_samples, n_clusters, n_features,
+        -2.0, &X[0, 0], n_features, &centers_old[0, 0], n_features,
+        1.0, pairwise_distances, n_clusters)
+
+    for i in prange(n_samples, schedule = 'static', num_threads = n_threads, nogil = True):
+        label = 0
+        min_sq_dist = max_val
+        row_offset = i * n_clusters
+
+        for j in range(n_clusters):
+
+            distance = pairwise_distances[row_offset + j]
+
+            if distance < min_sq_dist:
+                min_sq_dist = distance
+                label = j
+
+        labels[i] = label
+
+ 
+cdef update_centroids (
+    const floating[:, ::1] X,                         # IN
+    floating[:, ::1] centers_new,                     # OUT
+    int[::1] labels,                                  # OUT
+    const floating[::1] sample_weight,                # IN
+    floating[::1] weight_in_clusters,                  # OUT
+    const int n_samples,                              # IN
+    const int n_features,                             # IN
+    const int n_clusters,                             # In
+    const int n_threads,
+    omp_lock_t lock):                             # IN 
+
+    cdef:
+        int point, j, cluster, label, row_offset, row_offset_lock, j_lock, labels_counts_value
+        floating sample_weight_value 
+        # int* label_counts = <int*> calloc(n_clusters, sizeof(int))
+        # int* label_counts_partial
+        floating* cluster_partial
+        floating* weight_in_clusters_partial
+
+    # with boundscheck(False), wraparound(False):
+
+    with nogil, parallel(num_threads = n_threads):
+
+
+        cluster_partial = <floating*> calloc(n_clusters * n_features, sizeof(floating))
+        # label_counts_partial = <int*> calloc(n_clusters, sizeof(int))
+        weight_in_clusters_partial = <floating*> calloc(n_clusters, sizeof(floating))
+
+        for point in prange(n_samples, schedule = 'static'):
+
+            label = labels[point]
+            # label_counts_partial[label] += 1
+            sample_weight_value = sample_weight[point]
+            weight_in_clusters_partial[label] += sample_weight_value
+            row_offset = label * n_features
+
+
+            for j in range(n_features):
+
+                cluster_partial[row_offset + j] += X[point, j] * sample_weight_value
+
+        omp_set_lock(&lock)
+        for cluster in range(n_clusters):
+            # label_counts[cluster] += label_counts_partial[cluster]
+            weight_in_clusters[cluster] += weight_in_clusters_partial[cluster]
+
+            row_offset_lock = cluster * n_features
+
+            for j_lock in range(n_features):
+                centers_new[cluster, j_lock] += cluster_partial[row_offset_lock + j_lock]
+
+        omp_unset_lock(&lock)
+
+        # free(cluster_partial)
+        # free(label_counts_partial)
+        free(weight_in_clusters_partial)
+
+    omp_destroy_lock(&lock)
+    
+    # for cluster in range(n_clusters):
+
+        # labels_counts_value = label_counts[cluster]
+
+        # for j in range(n_features):
+
+            # centers_new[cluster, j] /= labels_counts_value
+
+    # free(label_counts)
 
 cdef void _update_chunk_dense(
         const floating[:, ::1] X,                   # IN
@@ -193,8 +452,11 @@ cdef void _update_chunk_dense(
     # the - 2 X.C^T + ||C||² term since the argmin for a given sample only
     # depends on the centers.
     # pairwise_distances = ||C||²
+    # Only iterates over all the sample in the chunk
     for i in range(n_samples):
         for j in range(n_clusters):
+            # adds the ||C||² for every data point as this is independent 
+            # the pairwise distance has i * n_cluster points (distance from every point to every cluster)
             pairwise_distances[i * n_clusters + j] = centers_squared_norms[j]
 
     # pairwise_distances += -2 * X.dot(C.T)
