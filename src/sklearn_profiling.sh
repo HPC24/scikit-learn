@@ -22,11 +22,11 @@ CONDA_ENV="sklearn-env"
 PYTHON_FILE="src/timing.py"
 
 # which implementation of the lloyd algorithm that is used inside sklearn
-IMPLEMENTATION="use_assign_centroids"
+IMPLEMENTATION="assign_centroids"
 
-if [ ${IMPLEMENTATION} == "use_assign_centroids" ]; then
+if [ ${IMPLEMENTATION} == "assign_centroids" ]; then
     echo "Using custom assign_centroids function"
-elif [ ${IMPLEMENTATION} == "use_assign_centroids_gemm" ]
+elif [ ${IMPLEMENTATION} == "assign_centroids_gemm" ]; then
      echo "Using custom assing_centroids_gemm function"
 else
     echo "Using standard scikit-learn implementation"
