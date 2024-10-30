@@ -19,7 +19,7 @@ OUTPUT_FILE="sklearn"
 BUILD_DIR=$(realpath build_pybind)
 
 CONDA_ENV="sklearn-env"
-PYTHON_FILE="src/timing.py"
+PYTHON_FILE="timing.py"
 
 # which implementation of the lloyd algorithm that is used inside sklearn
 IMPLEMENTATION="assign_centroids"
