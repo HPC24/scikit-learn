@@ -10,6 +10,10 @@
 build
 sklearn/datasets/__config__.py
 sklearn/**/*.html
+*.err
+*.err
+testfile
+install.sh
 
 out/
 dist/

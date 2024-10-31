@@ -22,7 +22,7 @@ CONDA_ENV="sklearn-env"
 PYTHON_FILE="timing.py"
 
 # which implementation of the lloyd algorithm that is used inside sklearn
-IMPLEMENTATION="assign_centroids"
+IMPLEMENTATION=""
 
 if [ ${IMPLEMENTATION} == "assign_centroids" ]; then
     echo "Using custom assign_centroids function"
@@ -52,7 +52,7 @@ do
     export OMP_NUM_THREADS=${N}
     echo "Starting timing for ${N} OMP_NUM_THREADS"
 
-    python ${PYTHON_FILE} --output_dir ${OUTPUT_DIR} --output_file ${OUTPUT_FILE} --${IMPLEMENTATION}
+    python ${PYTHON_FILE} --output_dir ${OUTPUT_DIR} --output_file ${OUTPUT_FILE} 
 
 done
 
