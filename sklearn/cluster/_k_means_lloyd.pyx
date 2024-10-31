@@ -114,7 +114,6 @@ def lloyd_iter_chunked_dense(
 
     if use_assign_centroids:
 
-        print("Using Assign_centroids Implementation")
         memset(&centers_new[0, 0], 0, n_clusters * n_features * sizeof(floating))
         memset(&weight_in_clusters[0], 0, n_clusters * sizeof(floating))
 
@@ -141,7 +140,6 @@ def lloyd_iter_chunked_dense(
 
     elif use_assign_centroids_gemm:
 
-        print("Using Assign_centroids_gemm Implementation")
         memset(&centers_new[0, 0], 0, n_clusters * n_features * sizeof(floating))
         memset(&weight_in_clusters[0], 0, n_clusters * sizeof(floating))
 
@@ -296,10 +294,6 @@ cdef void assign_centroids(
 
     cdef int n_chunks = n_samples // chunk_size
     cdef int n_remaining = n_samples % chunk_size
-
-    printf("Number of chunks: %d \n", n_chunks)
-    printf("Chunk_size: %d \n", chunk_size)
-
 
     cdef:
         int j, cluster, feature, start, end, chunk, row_offset_lock, samples

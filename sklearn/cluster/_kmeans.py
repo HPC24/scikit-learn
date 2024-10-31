@@ -1466,6 +1466,7 @@ class KMeans(_BaseKMeans):
         self : object
             Fitted estimator.
         """
+        print(f"Chunk_size = {self.chunk_size}")
         X = self._validate_data(
             X,
             accept_sparse="csr",
