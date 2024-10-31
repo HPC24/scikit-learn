@@ -80,12 +80,37 @@ def main():
     output_dir = pathlib.Path(cmd_args.output_dir)
     assert output_dir.is_dir(), f"{output_dir} does not exist" 
     
-    if cmd_args.assign_centroids: 
-        output_file = output_dir / (cmd_args.output_file + "_assign_centroids_timings.txt")
-    elif cmd_args.assign_centroids_gemm:
-        output_file = output_dir / (cmd_args.output_file + "_assign_centroids_gemm_timings.txt")
+    compiler_flags = os.environ.get("C_COMPILER_FLAGS")
+    
+    if compiler_flags is None:
+        
+        print("No additional Compilation arguments set")
+        
+        if cmd_args.assign_centroids: 
+            output_file = output_dir / (cmd_args.output_file + "_assign_centroids_timings.txt")
+        elif cmd_args.assign_centroids_gemm:
+            output_file = output_dir / (cmd_args.output_file + "_assign_centroids_gemm_timings.txt")
+        else:
+            output_file = output_dir / (cmd_args.output_file + "_timings.txt")
     else:
-       output_file = output_dir / (cmd_args.output_file + "_timings.txt")
+        
+        print(f"Compilation flags: {compiler_flags}")
+        
+        if "-march=native" in compiler_flags and "-mtune=native" in compiler_flags:
+            print("Architecture Optimization enabled")
+            arch_opt = "arch_opt"
+            compiler_flags = "_".join([flag.replace("-", "") for flag in compiler_flags.split() if flag != "-march=native" and flag != "-mtune=native"])
+        else:
+            print("No Architecture Optimization enabled")
+            arch_opt = "no_arch_opt"
+            
+        if cmd_args.assign_centroids: 
+            output_file = output_dir / (cmd_args.output_file + "_assign_centroids_" + compiler_flags + arch_opt + "_timings.txt")
+        elif cmd_args.assign_centroids_gemm:
+            output_file = output_dir / (cmd_args.output_file + "_assign_centroids_gemm_" + compiler_flags + arch_opt + "_timings.txt")
+        else:
+            output_file = output_dir / (cmd_args.output_file + compiler_flags + arch_opt + "_timings.txt")
+        
 
     if output_file.exists():   
         print(f"{output_file} already exists")

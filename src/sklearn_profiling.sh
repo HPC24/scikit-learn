@@ -24,6 +24,8 @@ PYTHON_FILE="timing.py"
 # which implementation of the lloyd algorithm that is used inside sklearn
 IMPLEMENTATION=""
 
+C_COMPILER_FLAGS="-O3 -march=native -mtune=native"
+
 if [ ${IMPLEMENTATION} == "assign_centroids" ]; then
     echo "Using custom assign_centroids function"
 elif [ ${IMPLEMENTATION} == "assign_centroids_gemm" ]; then
@@ -43,6 +45,9 @@ source activate ${CONDA_ENV}
 
 echo "Creating output directory for timings"
 mkdir -p ${OUTPUT_DIR}
+
+echo "Setting environment Variable C_COMPILER_FLAGS: ${C_COMPILER_FLAGS}"
+export C_COMPILER_FLAGS=${C_COMPILER_FLAGS}
 
 
 echo "Starting timing of sklearn KMeans implementation for up to ${SLURM_CPUS_PER_TASK}"

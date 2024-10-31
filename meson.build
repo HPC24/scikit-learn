@@ -27,13 +27,34 @@ elif cc.get_id() == 'msvc'
   endif
 endif
 
-_global_c_args = cc.get_supported_arguments(
+# Read the environment variable, default to an empty string if not set
+custom_cflags = meson.get_external_property('CUSTOM_CFLAGS', '')
+
+# Initialize an empty list for custom flags
+custom_cflags_list = []
+
+# Split the custom flags string into a list of individual flags, only if it's non-empty
+if custom_cflags != ''
+    custom_cflags_list = custom_cflags.split()
+endif
+
+default_c_args = [
   '-Wno-unused-but-set-variable',
   '-Wno-unused-function',
   '-Wno-conversion',
-  '-Wno-misleading-indentation',
-)
+  '-Wno-misleading-indentation'
+]
+
+# Combine the default arguments with the custom flags
+all_c_args = default_c_args + custom_cflags_list
+
+# Pass the combined list to the function
+_global_c_args = cc.get_supported_arguments(all_c_args)
+
 add_project_arguments(_global_c_args, language : 'c')
+
+message('Custom compile flags from CUSTOM_CFLAGS: ' + custom_cflags)
+message('Final C compiler arguments: ' + ' '.join(_global_c_args))
 
 # We need -lm for all C code (assuming it uses math functions, which is safe to
 # assume for scikit-learn). For C++ it isn't needed, because libstdc++/libc++ is
