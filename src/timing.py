@@ -74,7 +74,7 @@ def fit_kmeans(kmeans, data) -> float:
 def main():
     
     # custom_cache_dir = "/scratch/kurs_2024_sose_hpc/kurs_2024_sose_hpc_11/data"
-    custom_cache_dir = "/scratch/kurs_2024_sose_hpc/kurs_2024_sose_hpc_11"
+    custom_cache_dir = "/home/joshua/Projects/HPC_Project/data"
     cmd_args = parse_args()
     
     output_dir = pathlib.Path(cmd_args.output_dir)
