@@ -1,11 +1,14 @@
 # Licence: BSD 3 clause
 # cython: boundscheck=False, wraparound=False
 
+
+
 from cython cimport floating
 from cython.parallel import prange, parallel
 from libc.stdlib cimport malloc, calloc, free
 from libc.string cimport memset
 from libc.float cimport DBL_MAX, FLT_MAX
+from libc.stdio cimport printf
 
 from ..utils._openmp_helpers cimport omp_lock_t
 from ..utils._openmp_helpers cimport omp_init_lock
@@ -32,6 +35,7 @@ def lloyd_iter_chunked_dense(
         int n_threads,
         bint use_assign_centroids,
         bint use_assign_centroids_gemm,
+        int chunk_size,
         bint update_centers=True):
     """Single iteration of K-means lloyd algorithm with dense input.
 
@@ -91,7 +95,7 @@ def lloyd_iter_chunked_dense(
     cdef:
         # hard-coded number of samples per chunk. Appeared to be close to
         # optimal in all situations.
-        int n_samples_chunk = CHUNK_SIZE if n_samples > CHUNK_SIZE else n_samples
+        int n_samples_chunk = chunk_size if n_samples > chunk_size else n_samples
         int n_chunks = n_samples // n_samples_chunk
         int n_samples_rem = n_samples % n_samples_chunk
         int chunk_idx
@@ -117,27 +121,15 @@ def lloyd_iter_chunked_dense(
         assign_centroids(
                         X,
                         centers_old,
-                        labels,
-                        n_samples,
-                        n_features,
-                        n_clusters,
-                        n_threads)
-
-        omp_init_lock(&lock)
-
-        update_centroids(
-                        X,
-                        centers_new,
-                        labels,
                         sample_weight,
+                        labels,
+                        centers_new,
                         weight_in_clusters,
                         n_samples,
                         n_features,
                         n_clusters,
                         n_threads,
-                        lock)
-
-        omp_destroy_lock(&lock)
+                        chunk_size)
 
         _relocate_empty_clusters_dense(
             X, sample_weight, centers_old, centers_new, weight_in_clusters, labels
@@ -249,35 +241,71 @@ def lloyd_iter_chunked_dense(
             _average_centers(centers_new, weight_in_clusters)
             _center_shift(centers_old, centers_new, center_shift)
 
-cdef inline floating distance_calculation(
+
+cdef void distance_calculation(
     const floating[:, ::1] X,
     const floating[:, ::1] centers_old,
-    const int point,
-    const int cluster,
-    const int n_features) noexcept nogil:
+    const floating[::1] sample_weight,
+    int[::1] labels,
+    floating* centers_new_partial,
+    floating* weight_in_clusters_partial,
+    const int n_samples_chunk,
+    const int n_clusters,
+    const int n_features,
+    floating max_val) noexcept nogil:
 
     cdef:
-        int feature
-        floating distance = 0, diff
+        int point, cluster, feature, label, row_offset
+        floating distance, diff, min_sq_dist
 
-    for feature in range(n_features):
-        diff = X[point, feature] - centers_old[cluster, feature]
-        distance += diff * diff
+    for point in range(n_samples_chunk):
+        label = 0
+        min_sq_dist = max_val
 
-    return distance
+        for cluster in range(n_clusters):
+            distance = 0
 
-cdef assign_centroids(
+            for feature in range(n_features):
+                diff = X[point, feature] - centers_old[cluster, feature]
+                distance += diff * diff
+
+            if distance < min_sq_dist:
+                min_sq_dist = distance
+                label = cluster
+        
+        labels[point] = label
+        row_offset = label * n_features
+        sample_weight_value = sample_weight[point]
+        weight_in_clusters_partial[label] += sample_weight_value
+
+        for feature in range(n_features):
+            centers_new_partial[row_offset + feature] += X[point, feature] * sample_weight_value
+
+cdef void assign_centroids(
     const floating[:, ::1] X,                   # IN
-    const floating[:, ::1] centers_old,          # IN
-    int [::1] labels,                           # IN
-    const int n_samples,                              # IN
-    const int n_features,                             # IN
-    const int n_clusters,                             # In
-    const int n_threads):                             # IN 
+    const floating[:, ::1] centers_old,         # IN
+    const floating[::1] sample_weight,           # IN
+    int[::1] labels,                           # 
+    floating[:, ::1] centers_new,
+    floating[::1] weight_in_clusters,
+    const int n_samples,                        # IN
+    const int n_features,                       # IN
+    const int n_clusters,                       # In
+    const int n_threads,
+    int chunk_size):                           # IN 
+
+    cdef int n_chunks = n_samples // chunk_size
+    cdef int n_remaining = n_samples % chunk_size
+
+    printf("Number of chunks: %d \n", n_chunks)
+    printf("Chunk_size: %d \n", chunk_size)
+
 
     cdef:
-        int point, cluster, label
-        floating max_val, distance, min_sq_dist
+        int j, cluster, feature, start, end, chunk, row_offset_lock, samples
+        floating max_val, min_sq_dist, diff
+
+        omp_lock_t lock
 
     if floating is float:
         max_val = FLT_MAX
@@ -286,22 +314,56 @@ cdef assign_centroids(
     else:
         raise TypeError("Unsupported floating type")
 
-    # with cython.boundscheck(False), cython.wraparound(False):
+    # cdef floating* distances = <floating*> calloc(n_samples * n_clusters, sizeof(floating))
+    cdef floating* centers_new_partial
+    cdef floating* weight_in_clusters_partial
 
-    for point in prange(n_samples, schedule = 'static', num_threads = n_threads, nogil=True):
-        label = 0
-        min_sq_dist = max_val
+    omp_init_lock(&lock)
 
+    with nogil, parallel(num_threads = n_threads):
+
+        centers_new_partial = <floating*> calloc(n_clusters * n_features, sizeof(floating))
+        weight_in_clusters_partial = <floating*> calloc(n_clusters, sizeof(floating))
+
+        for chunk in prange(n_chunks, schedule = 'static'):
+
+            start = chunk * chunk_size
+
+            if chunk == n_chunks - 1 and n_remaining > 0:
+                end = start + n_remaining
+            else:
+                end = start + chunk_size
+
+            samples = end - start
+
+            distance_calculation(
+                X[start:end],
+                centers_old,
+                sample_weight[start:end],
+                labels[start:end],
+                centers_new_partial,
+                weight_in_clusters_partial,
+                samples,
+                n_clusters,
+                n_features,
+                max_val
+            )
+
+        omp_set_lock(&lock)
         for cluster in range(n_clusters):
+            weight_in_clusters[cluster] += weight_in_clusters_partial[cluster]
 
-            distance = distance_calculation(X, centers_old, point, cluster, n_features)
+            row_offset_lock = cluster * n_features
 
-            if distance < min_sq_dist:
+            for j in range(n_features):
+                centers_new[cluster, j] += centers_new_partial[row_offset_lock + j]
 
-                min_sq_dist = distance
-                label = cluster
+        omp_unset_lock(&lock)
 
-        labels[point] = label
+        free(centers_new_partial)
+        free(weight_in_clusters_partial)
+    
+    omp_destroy_lock(&lock)
 
         
 cdef assign_centroids_gemm(
