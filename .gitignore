@@ -14,6 +14,7 @@ sklearn/**/*.html
 *.err
 testfile
 install.sh
+**/Visualization/
 
 out/
 dist/

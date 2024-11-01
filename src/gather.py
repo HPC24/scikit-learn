@@ -38,6 +38,7 @@ def combine_results(data_directories: list) -> list[pd.DataFrame]:
         for file in directory.glob("*timings.txt"):
             print(f"Processing Data File: {file}")
             df = pd.read_csv(file, sep = "\t").assign(parameters = lambda df_: [str(file.stem).replace("_timings", "")] * df_.shape[0])
+            print(df.columns)
             dfs.append(df)
             
     return pd.concat(dfs, axis = "rows")
