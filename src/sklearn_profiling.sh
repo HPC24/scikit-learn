@@ -16,10 +16,11 @@
 
 OUTPUT_DIR="./out"
 OUTPUT_FILE="sklearn"
-BUILD_DIR=$(realpath build_pybind)
+BUILD_DIR="/home/kurs_2024_sose_hpc/kurs_2024_sose_hpc_11/scikit-learn"
 
 CONDA_ENV="sklearn-env"
 PYTHON_FILE="timing.py"
+CWD=$(pwd)
 
 # which implementation of the lloyd algorithm that is used inside sklearn
 IMPLEMENTATION="assign_centroids"
@@ -48,6 +49,9 @@ mkdir -p ${OUTPUT_DIR}
 
 echo "Setting environment Variable C_COMPILER_FLAGS: ${C_COMPILER_FLAGS}"
 export C_COMPILER_FLAGS=${C_COMPILER_FLAGS}
+
+echo "Uninstalling build dir: ${BUILD_DIR}"
+
 
 
 echo "Starting timing of sklearn KMeans implementation for up to ${SLURM_CPUS_PER_TASK}"
