@@ -96,6 +96,7 @@ def main():
         linewidth=2,
         markersize=8,
         ax = ax1,
+        colormap = "viridis"
         #color = [color_mapping[label] for label in piv_table.columns]
     )
     
@@ -132,7 +133,8 @@ def main():
         alpha=0.7,
         linewidth=2,
         markersize=8,
-        ax = ax2, 
+        ax = ax2,
+        colormap = "viridis" 
         #color = [color_mapping[label] for label in piv_table_iterations.columns]
     )
     
