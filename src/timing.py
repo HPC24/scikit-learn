@@ -98,11 +98,11 @@ def main():
         
         if "-march=native" in compiler_flags and "-mtune=native" in compiler_flags:
             print("Architecture Optimization enabled")
-            arch_opt = "arch_opt"
+            arch_opt = "_arch_opt"
             compiler_flags = "_".join([flag.replace("-", "") for flag in compiler_flags.split() if flag != "-march=native" and flag != "-mtune=native"])
         else:
             print("No Architecture Optimization enabled")
-            arch_opt = "no_arch_opt"
+            arch_opt = "_no_arch_opt"
             
         if cmd_args.assign_centroids: 
             output_file = output_dir / (cmd_args.output_file + "_assign_centroids_" + compiler_flags + arch_opt + "_timings.txt")

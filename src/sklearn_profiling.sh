@@ -22,7 +22,7 @@ CONDA_ENV="sklearn-env"
 PYTHON_FILE="timing.py"
 
 # which implementation of the lloyd algorithm that is used inside sklearn
-IMPLEMENTATION=""
+IMPLEMENTATION="assign_centroids"
 
 C_COMPILER_FLAGS="-O3 -march=native -mtune=native"
 
@@ -57,7 +57,7 @@ do
     export OMP_NUM_THREADS=${N}
     echo "Starting timing for ${N} OMP_NUM_THREADS"
 
-    python ${PYTHON_FILE} --output_dir ${OUTPUT_DIR} --output_file ${OUTPUT_FILE} 
+    python ${PYTHON_FILE} --output_dir ${OUTPUT_DIR} --output_file ${OUTPUT_FILE} --${IMPLEMENTATION}
 
 done
 
