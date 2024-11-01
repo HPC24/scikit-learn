@@ -77,7 +77,7 @@ def main():
     
     y_values = np.arange(1, piv_table.index[-1] + 1, 1)
     
-    cmap = plt.get_cmap("Set1")
+    cmap = plt.get_cmap("tab20")
     
     # create plots
     fig, (ax1, ax2) = plt.subplots(
@@ -96,7 +96,7 @@ def main():
         linewidth=2,
         markersize=8,
         ax = ax1,
-        colormap = "viridis"
+        colormap = cmap
         #color = [color_mapping[label] for label in piv_table.columns]
     )
     
@@ -134,7 +134,7 @@ def main():
         linewidth=2,
         markersize=8,
         ax = ax2,
-        colormap = "viridis" 
+        colormap = cmap 
         #color = [color_mapping[label] for label in piv_table_iterations.columns]
     )
     
