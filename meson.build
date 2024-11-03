@@ -48,6 +48,8 @@ default_c_args = [
 # Combine the default arguments with the custom flags
 all_c_args = default_c_args + custom_cflags_list
 
+message('All c args: ' + all_c_args)
+
 # Pass the combined list to the function
 _global_c_args = cc.get_supported_arguments(all_c_args)
 
