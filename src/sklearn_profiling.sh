@@ -51,8 +51,13 @@ echo "Setting environment Variable C_COMPILER_FLAGS: ${C_COMPILER_FLAGS}"
 export C_COMPILER_FLAGS=${C_COMPILER_FLAGS}
 
 echo "Uninstalling build dir: ${BUILD_DIR}"
-
-
+cd /home/kurs_2024_sose_hpc/kurs_2024_sose_hpc_11/scikit-learn
+rm -r build
+pip uninstall scikit-learn
+pip install --editable . \
+   --verbose --no-build-isolation \
+   --config-settings editable-verbose=true
+cd ${CWD}
 
 echo "Starting timing of sklearn KMeans implementation for up to ${SLURM_CPUS_PER_TASK}"
 
