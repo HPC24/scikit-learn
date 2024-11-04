@@ -181,7 +181,7 @@ else:
     ).stdout().strip()
 
 scikit_learn_cython_args = [
-  '-X language_level=3', '-X boundscheck=' + boundscheck, '-X wraparound=False',
+  '-X language_level=3', '-X boundscheck=False', '-X wraparound=False',
   '-X initializedcheck=False', '-X nonecheck=False', '-X cdivision=True',
   '-X profile=False',
   # Needed for cython imports across subpackages, e.g. cluster pyx that
