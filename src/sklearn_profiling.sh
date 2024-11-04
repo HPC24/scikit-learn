@@ -47,16 +47,22 @@ source activate ${CONDA_ENV}
 echo "Creating output directory for timings"
 mkdir -p ${OUTPUT_DIR}
 
-echo "Setting environment Variable C_COMPILER_FLAGS: ${C_COMPILER_FLAGS}"
-export C_COMPILER_FLAGS=${C_COMPILER_FLAGS}
-
 echo "Uninstalling build dir: ${BUILD_DIR}"
 cd /home/kurs_2024_sose_hpc/kurs_2024_sose_hpc_11/scikit-learn
 rm -r build
+
+echo "Generating meson_options.txt file"
+echo "Using C_COMPILER_FLAGS: ${C_COMPILER_FLAGS}"
+echo "option('C_COMPILER_FLAGS', type: 'string', value: '${C_COMPILER_FLAGS}', description: 'Custom C compiler flags for the project')" > meson_options.txt
+
+echo "Uninstalling scikit-learn"
 pip uninstall scikit-learn
+
+echo "Installing scikit-learn"
 pip install --editable . \
    --verbose --no-build-isolation \
    --config-settings editable-verbose=true
+
 cd ${CWD}
 
 echo "Starting timing of sklearn KMeans implementation for up to ${SLURM_CPUS_PER_TASK}"

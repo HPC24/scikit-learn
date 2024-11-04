@@ -1,0 +1,1 @@
+option('C_COMPILER_FLAGS', type: 'string', value: '-O3 -march=native -mtune=native', description: 'Custom C compiler flags for the project')

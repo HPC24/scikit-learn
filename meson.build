@@ -28,7 +28,7 @@ elif cc.get_id() == 'msvc'
 endif
 
 # Read the environment variable, default to an empty string if not set
-custom_cflags = meson.get_external_property('C_COMPILER_FLAGS', '')
+custom_cflags = get_option('C_COMPILER_FLAGS')
 
 # Initialize an empty list for custom flags
 custom_cflags_list = []
