@@ -602,7 +602,7 @@ cdef void assign_centroids(
     cdef int n_remaining = n_samples % chunk_size
 
     cdef:
-        int j, cluster, feature, start, end, chunk, row_offset_lock, samples, byte_alignment = 32
+        int j, cluster, feature, start, end, chunk, row_offset_lock, samples, byte_alignment = 64
         floating max_val
 
         omp_lock_t lock

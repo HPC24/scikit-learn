@@ -73,8 +73,9 @@ def aligned_array(shape, dtype=np.float32, alignment=32):
     aligned_array = np.frombuffer(raw_buffer[start_index:], dtype=dtype, count=np.prod(shape)).reshape(shape, order='C')
     
     # Verify alignment
-    assert aligned_array.ctypes.data % alignment == 0, "Array is not aligned to 32 bytes!"
+    assert aligned_array.ctypes.data % alignment == 0, f"Array is not aligned to {alignment} bytes!"
     assert aligned_array.flags['C_CONTIGUOUS'] == True, "Array is not C-Continguous"
+    print("Memory is aligned")
     return aligned_array
 
 
@@ -1535,7 +1536,7 @@ class KMeans(_BaseKMeans):
         best_inertia, best_labels = None, None
         
         # aligne the numpy array to 32 byte to process efficiently in vector registers
-        X_aligned = aligned_array(X.shape, X.dtype)
+        X_aligned = aligned_array(X.shape, X.dtype, 64)
         # Copy all the values to the aligned array
         np.copyto(X_aligned, X)
         X = X_aligned
@@ -1551,7 +1552,7 @@ class KMeans(_BaseKMeans):
                 sample_weight=sample_weight,
             )
             
-            center_aligned = aligned_array(centers_init.shape, centers_init.dtype)
+            center_aligned = aligned_array(centers_init.shape, centers_init.dtype, 64)
             np.copyto(center_aligned, centers_init)
             centers_init = center_aligned
             
