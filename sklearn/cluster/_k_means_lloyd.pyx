@@ -2,13 +2,14 @@
 # cython: boundscheck=False, wraparound=False
 
 
-
+import sys
 from cython cimport floating
 from cython.parallel import prange, parallel
 from libc.stdlib cimport malloc, calloc, free
+from libc.stddef cimport size_t
 from libc.string cimport memset
 from libc.float cimport DBL_MAX, FLT_MAX
-from libc.stdio cimport printf
+from libc.stdio cimport printf, fflush, FILE, stdout
 
 from ..utils._openmp_helpers cimport omp_lock_t
 from ..utils._openmp_helpers cimport omp_init_lock
@@ -22,6 +23,118 @@ from ._k_means_common import CHUNK_SIZE
 from ._k_means_common cimport _relocate_empty_clusters_dense
 from ._k_means_common cimport _relocate_empty_clusters_sparse
 from ._k_means_common cimport _average_centers, _center_shift
+
+cdef extern from "stdlib.h" nogil:
+    int posix_memalign(void **memptr, size_t alignment, size_t size)
+
+
+cdef extern from "immintrin.h" nogil:
+    # AVX-512 vector types
+    ctypedef struct __m512:
+        pass
+    ctypedef struct __m512d:
+        pass
+    ctypedef struct __m512i:
+        pass
+
+    # Load and store functions for aligned data
+    __m512 _mm512_load_ps(const float * mem_addr)
+    void _mm512_store_ps(float * mem_addr, __m512 a)
+    __m512d _mm512_load_pd(const double * mem_addr)
+    void _mm512_store_pd(double * mem_addr, __m512d a)
+    __m512i _mm512_load_si512(const int * mem_addr)
+    void _mm512_store_si512(void * mem_addr, __m512i a)
+
+    # Arithmetic operations
+    __m512 _mm512_add_ps(__m512 a, __m512 b)
+    __m512 _mm512_sub_ps(__m512 a, __m512 b)
+    __m512 _mm512_mul_ps(__m512 a, __m512 b)
+    __m512 _mm512_div_ps(__m512 a, __m512 b)
+    __m512 _mm512_fmadd_ps(__m512 a, __m512 b, __m512 c)
+    __m512 _mm512_setzero_ps()
+    __m512 _mm512_set1_ps(float a)
+    float _mm512_reduce_add_ps (__m512 a)
+
+    __m512d _mm512_add_pd(__m512d a, __m512d b)
+    __m512d _mm512_sub_pd(__m512d a, __m512d b)
+    __m512d _mm512_mul_pd(__m512d a, __m512d b)
+    __m512d _mm512_div_pd(__m512d a, __m512d b)
+    __m512d _mm512_fmadd_pd(__m512d a, __m512d b, __m512d c)
+    __m512d _mm512_setzero_pd()
+    __m512d _mm512_set1_pd(double a)
+    double _mm512_reduce_add_pd(__m512d a)
+
+
+    # AVX-256 vector types
+    ctypedef struct __m256:
+        pass
+    ctypedef struct __m256d:
+        pass
+    ctypedef struct __m256i:
+        pass
+    ctypedef struct __m128:
+        pass
+    ctypedef struct __m128d:
+        pass
+
+    # Load and store functions for aligned data
+    __m256 _mm256_load_ps(const void * mem_addr)
+    void _mm256_store_ps(void * mem_addr, __m256 a)
+    __m256d _mm256_load_pd(const void* mem_addr)
+    void _mm256_store_pd(void * mem_addr, __m256d a)
+    __m256i _mm256_load_si256(const void * mem_addr)
+    void _mm256_store_si256(void * mem_addr, __m256i a)
+
+    # Arithmetic operations
+    __m256 _mm256_add_ps(__m256 a, __m256 b)
+    __m256 _mm256_sub_ps(__m256 a, __m256 b)
+    __m256 _mm256_mul_ps(__m256 a, __m256 b)
+    __m256 _mm256_div_ps(__m256 a, __m256 b)
+    __m256 _mm256_fmadd_ps(__m256 a, __m256 b, __m256 c)
+    __m256 _mm256_setzero_ps()
+    __m256 _mm256_set1_ps(float a)
+
+    __m256d _mm256_add_pd(__m256d a, __m256d b)
+    __m256d _mm256_sub_pd(__m256d a, __m256d b)
+    __m256d _mm256_mul_pd(__m256d a, __m256d b)
+    __m256d _mm256_div_pd(__m256d a, __m256d b)
+    __m256d _mm256_fmadd_pd(__m256d a, __m256d b, __m256d c)
+    __m256d _mm256_setzero_pd()
+    __m256d _mm256_set1_pd(double a)
+
+    __m128d _mm256_castpd256_pd128(__m256d a)             # Cast 256-bit __m256d to 128-bit __m128d
+    __m128d _mm256_extractf128_pd(__m256d a, int imm8)    # Extract upper 128 bits from 256-bit __m256d
+    __m128d _mm_add_pd(__m128d a, __m128d b)              # Add two __m128d vectors element-wise
+    __m128d _mm_hadd_pd(__m128d a, __m128d b)             # Horizontal add of two __m128d vectors
+    double _mm_cvtsd_f64(__m128d a)                       # Extract the lower double from __m128d
+
+    __m128 _mm256_castps256_ps128(__m256 a)             # Cast 256-bit __m256d to 128-bit __m128d
+    __m128 _mm256_extractf128_ps(__m256 a, int imm8)    # Extract upper 128 bits from 256-bit __m256d
+    __m128 _mm_add_ps(__m128 a, __m128 b)              # Add two __m128d vectors element-wise
+    __m128 _mm_hadd_ps(__m128 a, __m128 b)             # Horizontal add of two __m128d vectors
+    float _mm_cvtss_f32(__m128 a)                       # Extract the lower double from __m128d
+
+
+cdef void * aligned_alloc(size_t alignment, size_t size) noexcept nogil:
+    cdef void * ptr = NULL
+
+    # Allocate aligned memory
+    if posix_memalign(&ptr, alignment, size) != 0:
+        printf("Wrong memory allocation")
+
+    # Initialize allocated memory to zero
+    memset(ptr, 0, size)
+    
+    return ptr
+
+cdef void * aligned_malloc(size_t alignment, size_t size) noexcept nogil:
+    cdef void * ptr = NULL
+
+    # Allocate aligned memory
+    if posix_memalign(&ptr, alignment, size) != 0:
+        printf("Wrong memory allocation")
+    
+    return ptr
 
 
 def lloyd_iter_chunked_dense(
@@ -239,6 +352,199 @@ def lloyd_iter_chunked_dense(
             _average_centers(centers_new, weight_in_clusters)
             _center_shift(centers_old, centers_new, center_shift)
 
+cdef void simd_partial_cluster_float(
+    const float[::1] X,
+    float* centers_new_partial,
+    float sample_weight_value,
+    int n_features) noexcept nogil:
+
+    cdef: 
+        int i, remaining, rem_iterator
+        __m512 centers, X_partial, weight_vec
+    
+    remaining = n_features % 16
+    rem_iterator = n_features - remaining
+
+    weight_vec = _mm512_set1_ps(sample_weight_value)
+
+    for i in range(0, rem_iterator, 16):
+
+        centers = _mm512_load_ps(&centers_new_partial[i])   # load 4 values of the partial centers vector into a register
+        X_partial = _mm512_load_ps(&X[i])                   # load 4 values of the point that is being processed into a register
+        X_partial = _mm512_mul_ps(X_partial, weight_vec)    # multiply the point values with the sample weight
+        centers = _mm512_add_ps(centers, X_partial)         # add the point values to the centers
+        _mm512_store_ps(&centers_new_partial[i], centers)   # Load values into the old centers_new_partial vector
+
+    for i in range(rem_iterator, n_features):
+        centers_new_partial[i] += X[i] * sample_weight_value
+
+
+cdef float simd_float(
+    const float[::1] X,
+    const float[::1] centers_old,
+    const int n_features) noexcept nogil:
+
+    cdef:
+        int i, remaining, rem_iterator
+        __m512 sum_vector, X_partial, centers_partial, difference
+        float distance, diff
+
+    remaining = n_features % 16
+    rem_iterator = n_features - remaining
+
+    sum_vector = _mm512_setzero_ps()
+
+    for i in range(0, rem_iterator, 16):
+
+        X_partial = _mm512_load_ps(&X[i])
+        centers_partial = _mm512_load_ps(&centers_old[i])
+        difference = _mm512_sub_ps(X_partial, centers_partial)
+        difference = _mm512_mul_ps(difference, difference)
+        sum_vector = _mm512_add_ps(sum_vector, difference)
+
+    distance = _mm512_reduce_add_ps(sum_vector)
+
+    for i in range(rem_iterator, n_features):
+        diff = X[i] - centers_old[i]
+        distance += diff * diff
+
+    return distance
+
+
+cdef void simd_partial_cluster_double(
+    const double[::1] X,
+    double* centers_new_partial,
+    double sample_weight_value,
+    int n_features) noexcept nogil:
+
+    cdef: 
+        int i, remaining, rem_iterator
+        __m512d centers, X_partial, weight_vec
+    
+    remaining = n_features % 8
+    rem_iterator = n_features - remaining
+
+    weight_vec = _mm512_set1_pd(sample_weight_value)
+
+    for i in range(0, rem_iterator, 8):
+
+        centers = _mm512_load_pd(&centers_new_partial[i])   # load 4 values of the partial centers vector into a register
+        X_partial = _mm512_load_pd(&X[i])                   # load 4 values of the point that is being processed into a register
+        X_partial = _mm512_mul_pd(X_partial, weight_vec)    # multiply the point values with the sample weight
+        centers = _mm512_add_pd(centers, X_partial)         # add the point values to the centers
+        _mm512_store_pd(&centers_new_partial[i], centers)   # Load values into the old centers_new_partial vector
+
+    for i in range(rem_iterator, n_features):
+        centers_new_partial[i] += X[i] * sample_weight_value
+
+
+cdef double simd_double(
+    const double[::1] X,
+    const double[::1] centers_old,
+    const int n_features) noexcept nogil:
+
+    cdef:
+        int i, remaining, rem_iterator, bit_lane = 1
+        __m512d sum_vector, X_partial, centers_partial, difference
+        double distance, diff
+
+    remaining = n_features % 8
+    rem_iterator = n_features - remaining
+
+    sum_vector = _mm512_setzero_pd()
+
+    for i in range(0, rem_iterator, 8):
+
+        X_partial = _mm512_load_pd(&X[i])
+        centers_partial = _mm512_load_pd(&centers_old[i])
+        difference = _mm512_sub_pd(X_partial, centers_partial)
+        difference = _mm512_mul_pd(difference, difference)
+        sum_vector = _mm512_add_pd(sum_vector, difference)
+
+    distance = _mm512_reduce_add_pd(sum_vector) 
+
+    for i in range(rem_iterator, n_features):
+        diff = X[i] - centers_old[i]
+        distance += diff * diff
+
+    return distance
+
+
+cdef void simd_distance_calculation_float(    
+    const float[:, ::1] X,
+    const float[:, ::1] centers_old,
+    const float[::1] sample_weight,
+    int[::1] labels,
+    float* centers_new_partial,
+    float* weight_in_clusters_partial,
+    const int n_samples_chunk,
+    const int n_clusters,
+    const int n_features,
+    float max_val) noexcept nogil:
+
+    
+    cdef:
+        int point, cluster, feature, label, row_offset
+        float distance, diff, min_sq_dist, sample_weight_value
+
+
+    for point in range(n_samples_chunk):
+        label = 0
+        min_sq_dist = max_val
+
+        for cluster in range(n_clusters):
+
+            distance = simd_float(X[point], centers_old[cluster], n_features)
+
+            if distance < min_sq_dist:
+                min_sq_dist = distance
+                label = cluster
+        
+        labels[point] = label
+        row_offset = label * n_features
+        sample_weight_value = sample_weight[point]
+        weight_in_clusters_partial[label] += sample_weight_value
+
+        simd_partial_cluster_float(X[point], &centers_new_partial[row_offset], sample_weight_value, n_features)
+
+
+cdef void simd_distance_calculation_double(    
+    const double[:, ::1] X,
+    const double[:, ::1] centers_old,
+    const double[::1] sample_weight,
+    int[::1] labels,
+    double* centers_new_partial,
+    double* weight_in_clusters_partial,
+    const int n_samples_chunk,
+    const int n_clusters,
+    const int n_features,
+    double max_val) noexcept nogil:
+
+    
+    cdef:
+        int point, cluster, feature, label, row_offset
+        double distance, diff, min_sq_dist, sample_weight_value
+
+
+    for point in range(n_samples_chunk):
+        label = 0
+        min_sq_dist = max_val
+
+        for cluster in range(n_clusters):
+
+            distance = simd_double(X[point], centers_old[cluster], n_features)
+
+            if distance < min_sq_dist:
+                min_sq_dist = distance
+                label = cluster
+        
+        labels[point] = label
+        row_offset = label * n_features
+        sample_weight_value = sample_weight[point]
+        weight_in_clusters_partial[label] += sample_weight_value
+
+        simd_partial_cluster_double(X[point], &centers_new_partial[row_offset], sample_weight_value, n_features)
+
 
 cdef void distance_calculation(
     const floating[:, ::1] X,
@@ -254,7 +560,7 @@ cdef void distance_calculation(
 
     cdef:
         int point, cluster, feature, label, row_offset
-        floating distance, diff, min_sq_dist
+        floating distance, diff, min_sq_dist, sample_weight_value
 
     for point in range(n_samples_chunk):
         label = 0
@@ -296,8 +602,8 @@ cdef void assign_centroids(
     cdef int n_remaining = n_samples % chunk_size
 
     cdef:
-        int j, cluster, feature, start, end, chunk, row_offset_lock, samples
-        floating max_val, min_sq_dist, diff
+        int j, cluster, feature, start, end, chunk, row_offset_lock, samples, byte_alignment = 32
+        floating max_val
 
         omp_lock_t lock
 
@@ -308,16 +614,18 @@ cdef void assign_centroids(
     else:
         raise TypeError("Unsupported floating type")
 
+
     # cdef floating* distances = <floating*> calloc(n_samples * n_clusters, sizeof(floating))
     cdef floating* centers_new_partial
     cdef floating* weight_in_clusters_partial
+
 
     omp_init_lock(&lock)
 
     with nogil, parallel(num_threads = n_threads):
 
-        centers_new_partial = <floating*> calloc(n_clusters * n_features, sizeof(floating))
-        weight_in_clusters_partial = <floating*> calloc(n_clusters, sizeof(floating))
+        centers_new_partial = <floating*> aligned_alloc(byte_alignment, n_clusters * n_features * sizeof(floating))
+        weight_in_clusters_partial = <floating*> aligned_alloc(byte_alignment, n_clusters * sizeof(floating))
 
         for chunk in prange(n_chunks, schedule = 'static'):
 
@@ -330,18 +638,35 @@ cdef void assign_centroids(
 
             samples = end - start
 
-            distance_calculation(
-                X[start:end],
-                centers_old,
-                sample_weight[start:end],
-                labels[start:end],
-                centers_new_partial,
-                weight_in_clusters_partial,
-                samples,
-                n_clusters,
-                n_features,
-                max_val
-            )
+            if floating is float:
+
+                simd_distance_calculation_float(
+                    X[start:end],
+                    centers_old,
+                    sample_weight[start:end],
+                    labels[start:end],
+                    centers_new_partial,
+                    weight_in_clusters_partial,
+                    samples,
+                    n_clusters,
+                    n_features,
+                    max_val
+                )
+
+            else:
+
+                simd_distance_calculation_double(
+                    X[start:end],
+                    centers_old,
+                    sample_weight[start:end],
+                    labels[start:end],
+                    centers_new_partial,
+                    weight_in_clusters_partial,
+                    samples,
+                    n_clusters,
+                    n_features,
+                    max_val
+                )
 
         omp_set_lock(&lock)
         for cluster in range(n_clusters):

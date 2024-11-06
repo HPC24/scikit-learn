@@ -9,6 +9,7 @@ from numbers import Integral, Real
 
 import numpy as np
 import scipy.sparse as sp
+import ctypes
 
 from ..base import (
     BaseEstimator,
@@ -51,6 +52,30 @@ from ._k_means_minibatch import _minibatch_update_dense, _minibatch_update_spars
 
 ###############################################################################
 # Initialization heuristic
+
+def aligned_array(shape, dtype=np.float32, alignment=32):
+    # Calculate the byte size of the type
+    dtype_size = np.dtype(dtype).itemsize
+    
+    # Calculate how many bytes need to be allocated based on the total number of elements in the array
+    nbytes = np.prod(shape) * dtype_size
+    
+    # Allocate 32 extra bytes so when the array is not aligned that still the necessary size can be sliced later
+    extra_bytes = alignment + nbytes
+    
+    # Create the buffer which holds n_elements * sizeof(dtype) + 32 bytes
+    raw_buffer = np.empty(extra_bytes, dtype=np.uint8)
+    
+    # Find the start address that is 32-byte aligned
+    start_index = -raw_buffer.ctypes.data % alignment
+    
+    # Here the slicing is simple as the start index just represents how many 
+    aligned_array = np.frombuffer(raw_buffer[start_index:], dtype=dtype, count=np.prod(shape)).reshape(shape, order='C')
+    
+    # Verify alignment
+    assert aligned_array.ctypes.data % alignment == 0, "Array is not aligned to 32 bytes!"
+    assert aligned_array.flags['C_CONTIGUOUS'] == True, "Array is not C-Continguous"
+    return aligned_array
 
 
 @validate_params(
@@ -1477,7 +1502,7 @@ class KMeans(_BaseKMeans):
         )
 
         self._check_params_vs_input(X)
-
+        
         random_state = check_random_state(self.random_state)
         sample_weight = _check_sample_weight(sample_weight, X, dtype=X.dtype)
         self._n_threads = _openmp_effective_n_threads()
@@ -1508,6 +1533,13 @@ class KMeans(_BaseKMeans):
             self._check_mkl_vcomp(X, X.shape[0])
 
         best_inertia, best_labels = None, None
+        
+        # aligne the numpy array to 32 byte to process efficiently in vector registers
+        X_aligned = aligned_array(X.shape, X.dtype)
+        # Copy all the values to the aligned array
+        np.copyto(X_aligned, X)
+        X = X_aligned
+        
 
         for i in range(self._n_init):
             # Initialize centers
@@ -1518,6 +1550,11 @@ class KMeans(_BaseKMeans):
                 random_state=random_state,
                 sample_weight=sample_weight,
             )
+            
+            center_aligned = aligned_array(centers_init.shape, centers_init.dtype)
+            np.copyto(center_aligned, centers_init)
+            centers_init = center_aligned
+            
             if self.verbose:
                 print("Initialization complete")
 
