@@ -65,6 +65,9 @@ pip install --editable . \
 
 cd ${CWD}
 
+echo "Importing KMeans to compile the necessary files"
+python3 -c "import sklearn.cluster.KMeans"
+
 echo "Starting timing of sklearn KMeans implementation for up to ${SLURM_CPUS_PER_TASK}"
 
 for N in $(seq 1 ${SLURM_CPUS_PER_TASK});
