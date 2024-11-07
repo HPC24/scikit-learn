@@ -531,3 +531,107 @@ cdef void simd_distance_calculation_double(
         weight_in_clusters_partial[label] += sample_weight_value
 
         simd_partial_cluster_double(X[point], &centers_new_partial[row_offset], sample_weight_value, n_features)
+
+
+cdef void assign_centroids(
+    const floating[:, ::1] X,                   # IN
+    const floating[:, ::1] centers_old,         # IN
+    const floating[::1] sample_weight,           # IN
+    int[::1] labels,                           # 
+    floating[:, ::1] centers_new,
+    floating[::1] weight_in_clusters,
+    const int n_samples,                        # IN
+    const int n_features,                       # IN
+    const int n_clusters,                       # In
+    const int n_threads,
+    int chunk_size):                           # IN 
+
+    cdef int n_chunks = n_samples // chunk_size
+    cdef int n_remaining = n_samples % chunk_size
+
+    cdef:
+        int j, j_lock, cluster, feature, start, end, chunk, row_offset_lock, samples, byte_alignment = 64
+        floating max_val
+
+        omp_lock_t lock
+
+    if floating is float:
+        max_val = FLT_MAX
+    elif floating is double:
+        max_val = DBL_MAX
+    else:
+        raise TypeError("Unsupported floating type")
+
+
+    # cdef floating* distances = <floating*> calloc(n_samples * n_clusters, sizeof(floating))
+    cdef floating* centers_new_partial
+    cdef floating* weight_in_clusters_partial
+
+
+    omp_init_lock(&lock)
+
+    with nogil, parallel(num_threads = n_threads):
+
+        centers_new_partial = <floating*> aligned_alloc(byte_alignment, n_clusters * n_features * sizeof(floating))
+        weight_in_clusters_partial = <floating*> aligned_alloc(byte_alignment, n_clusters * sizeof(floating))
+
+        for chunk in prange(n_chunks, schedule = 'static'):
+
+            start = chunk * chunk_size
+
+            if chunk == n_chunks - 1 and n_remaining > 0:
+                end = start + n_remaining
+            else:
+                end = start + chunk_size
+
+            samples = end - start
+
+            if floating is float:
+
+                simd_distance_calculation_float(
+                    X[start:end],
+                    centers_old,
+                    sample_weight[start:end],
+                    labels[start:end],
+                    centers_new_partial,
+                    weight_in_clusters_partial,
+                    samples,
+                    n_clusters,
+                    n_features,
+                    max_val
+                )
+
+            else:
+
+                simd_distance_calculation_double(
+                    X[start:end],
+                    centers_old,
+                    sample_weight[start:end],
+                    labels[start:end],
+                    centers_new_partial,
+                    weight_in_clusters_partial,
+                    samples,
+                    n_clusters,
+                    n_features,
+                    max_val
+                )
+
+        omp_set_lock(&lock)
+        for cluster in range(n_clusters):
+            weight_in_clusters[cluster] += weight_in_clusters_partial[cluster]
+            row_offset_lock = cluster * n_features
+
+            for j_lock in range(n_features):
+                centers_new[cluster, j_lock] += centers_new_partial[row_offset_lock + j_lock]
+
+            # if floating is float:
+            #     simd_lock_partial_add_float(centers_new[row_offset_lock], &centers_new_partial[row_offset_lock], n_features)
+            # else:
+            #     simd_lock_partial_add_double(centers_new[row_offset_lock], &centers_new_partial[row_offset_lock], n_features)
+
+        omp_unset_lock(&lock)
+
+        free(centers_new_partial)
+        free(weight_in_clusters_partial)
+    
+    omp_destroy_lock(&lock)

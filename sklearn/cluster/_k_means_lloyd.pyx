@@ -434,7 +434,7 @@ cdef float simd_float(
     cdef:
         int i, remaining, rem_iterator
         __m512 sum_vector, X_partial, centers_partial, difference
-        float distance, diff
+        float distance = 0, diff
 
     remaining = n_features % 16
     rem_iterator = n_features - remaining
@@ -493,7 +493,7 @@ cdef double simd_double(
     cdef:
         int i, remaining, rem_iterator, bit_lane = 1
         __m512d sum_vector, X_partial, centers_partial, difference
-        double distance, diff
+        double distance = 0, diff
 
     remaining = n_features % 8
     rem_iterator = n_features - remaining
@@ -720,13 +720,13 @@ cdef void assign_centroids(
             weight_in_clusters[cluster] += weight_in_clusters_partial[cluster]
             row_offset_lock = cluster * n_features
 
-            for j_lock in range(n_features):
-                centers_new[cluster, j_lock] += centers_new_partial[row_offset_lock + j_lock]
+            # for j_lock in range(n_features):
+            #    centers_new[cluster, j_lock] += centers_new_partial[row_offset_lock + j_lock]
 
-            # if floating is float:
-            #     simd_lock_partial_add_float(centers_new[row_offset_lock], &centers_new_partial[row_offset_lock], n_features)
-            # else:
-            #     simd_lock_partial_add_double(centers_new[row_offset_lock], &centers_new_partial[row_offset_lock], n_features)
+            if floating is float:
+                simd_lock_partial_add_float(centers_new[cluster], &centers_new_partial[row_offset_lock], n_features)
+            else:
+                simd_lock_partial_add_double(centers_new[cluster], &centers_new_partial[row_offset_lock], n_features)
 
         omp_unset_lock(&lock)
 
