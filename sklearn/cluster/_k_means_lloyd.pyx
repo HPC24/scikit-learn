@@ -649,7 +649,7 @@ cdef void assign_centroids(
     cdef int n_remaining = n_samples % chunk_size
 
     cdef:
-        int j, cluster, feature, start, end, chunk, row_offset_lock, samples, byte_alignment = 64
+        int j, j_lock, cluster, feature, start, end, chunk, row_offset_lock, samples, byte_alignment = 64
         floating max_val
 
         omp_lock_t lock
@@ -721,7 +721,7 @@ cdef void assign_centroids(
             row_offset_lock = cluster * n_features
 
             for j_lock in range(n_features):
-                centers_new[row_offset_lock + j_lock] += centers_new_partial[row_offset_lock + j_lock]
+                centers_new[row_offset_lock, j_lock] += centers_new_partial[row_offset_lock + j_lock]
 
 
             # if floating is float:
