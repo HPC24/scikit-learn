@@ -775,6 +775,9 @@ def _kmeans_single_lloyd(
             labels,
             center_shift,
             n_threads,
+            use_assign_centroids,
+            use_assign_centroids_gemm,
+            chunk_size,
             update_centers=False,
         )
 
