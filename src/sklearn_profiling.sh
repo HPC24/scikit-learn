@@ -15,7 +15,7 @@
 #SBATCH --error=%u.log.%j.err
 
 OUTPUT_DIR="./out"
-OUTPUT_FILE="sklearn"
+OUTPUT_FILE="sklearn_simd"
 BUILD_DIR="/home/kurs_2024_sose_hpc/kurs_2024_sose_hpc_11/scikit-learn"
 
 CONDA_ENV="sklearn-env"
@@ -57,7 +57,7 @@ echo "Using C_COMPILER_FLAGS: ${C_COMPILER_FLAGS}"
 echo "option('C_COMPILER_FLAGS', type: 'string', value: '${C_COMPILER_FLAGS}', description: 'Custom C compiler flags for the project')" > meson_options.txt
 
 echo "Uninstalling scikit-learn"
-pip uninstall scikit-learn
+pip uninstall scikit-learn -y
 
 echo "Installing scikit-learn"
 pip install --editable . \
@@ -67,7 +67,7 @@ pip install --editable . \
 cd ${CWD}
 
 echo "Importing KMeans to compile the necessary files"
-python3 -c "import sklearn.cluster.KMeans"
+python -c "from sklearn.cluster import KMeans"
 
 echo "Starting timing of sklearn KMeans implementation for up to ${SLURM_CPUS_PER_TASK}"
 
