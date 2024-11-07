@@ -10,9 +10,9 @@ from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import confusion_matrix
 
 
-#chunk_sizes = [4, 8 , 16, 32, 64, 128, 256, 512, 1024]
-chunk_sizes = [256]
-TIMING_ITERATIONS = 1
+# chunk_sizes = [4, 8 , 16, 32, 64, 128, 256, 512, 1024]
+chunk_sizes = [16]
+TIMING_ITERATIONS = 5
 KMEANS_INIT="random"
 KMEANS_N_INIT=1
 N_CLUSTER = 10

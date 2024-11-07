@@ -36,7 +36,7 @@ C_COMPILER_FLAGS="-march=native -mtune=native"
 
 export C_COMPILER_FLAGS=${C_COMPILER_FLAGS}
 
-VTUNE_OUTPUT_DIRECTORY=${PROFILING_RESULTS_DIR}_${OUTPUT_FILE}
+VTUNE_OUTPUT_DIRECTORY=${PROFILING_RESULTS_DIR}_${OUTPUT_FILE}_OMP_${PROFILING_THREADS}
 OUTPUT_DIR="${VTUNE_OUTPUT_DIRECTORY}/out"
 
 echo "Creating Output directory: ${OUTPUT_DIR}"
@@ -74,7 +74,7 @@ export OMP_NUM_THREADS=${PROFILING_THREADS}
 vtune -collect ${ANALYSIS_TYPE} \
     -result-dir ${VTUNE_OUTPUT_DIRECTORY} \
     -- ${EXECUTABLE} \
-    --output_dir ${$OUTPUT_DIR} \
+    --output_dir ${OUTPUT_DIR} \
     --output_file ${OUTPUT_FILE} \
     -- ${IMPLEMENTATION}
 
