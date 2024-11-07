@@ -351,6 +351,54 @@ def lloyd_iter_chunked_dense(
             _average_centers(centers_new, weight_in_clusters)
             _center_shift(centers_old, centers_new, center_shift)
 
+
+cdef void simd_lock_partial_add_float(
+    float[::1] centers_new,
+    float* centers_new_partial,
+    const int n_features) noexcept nogil:
+
+    cdef: 
+        int i, remaining, rem_iterator
+        __m512 centers, centers_partial
+    
+    remaining = n_features % 16
+    rem_iterator = n_features - remaining
+
+    for i in range(0, rem_iterator, 16):
+
+        centers = _mm512_load_ps(&centers_new[i])   
+        centers_partial = _mm512_load_ps(&centers_new_partial[i])                     
+        centers = _mm512_add_ps(centers, centers_partial)         
+        _mm512_store_ps(&centers_new[i], centers)   
+
+    for i in range(rem_iterator, n_features):
+        centers_new[i] += centers_new_partial[i]
+
+
+cdef void simd_lock_partial_add_double(    
+    double[::1] centers_new,
+    double* centers_new_partial,
+    const int n_features) noexcept nogil:
+
+    cdef: 
+        int i, remaining, rem_iterator
+        __m512d centers, centers_partial
+    
+    remaining = n_features % 8
+    rem_iterator = n_features - remaining
+
+    for i in range(0, rem_iterator, 8):
+
+        centers = _mm512_load_pd(&centers_new[i])   
+        centers_partial = _mm512_load_pd(&centers_new_partial[i])                      
+        centers = _mm512_add_pd(centers, centers_partial)         
+        _mm512_store_pd(&centers_new[i], centers)   
+
+    for i in range(rem_iterator, n_features):
+        centers_new[i] += centers_new_partial[i]
+
+
+
 cdef void simd_partial_cluster_float(
     const float[::1] X,
     float* centers_new_partial,
@@ -670,11 +718,12 @@ cdef void assign_centroids(
         omp_set_lock(&lock)
         for cluster in range(n_clusters):
             weight_in_clusters[cluster] += weight_in_clusters_partial[cluster]
-
             row_offset_lock = cluster * n_features
 
-            for j in range(n_features):
-                centers_new[cluster, j] += centers_new_partial[row_offset_lock + j]
+            if floating is float:
+                simd_lock_partial_add_float(centers_new[row_offset_lock], &centers_new_partial[row_offset_lock], n_features)
+            else:
+                simd_lock_partial_add_double(centers_new[row_offset_lock], &centers_new_partial[row_offset_lock], n_features)
 
         omp_unset_lock(&lock)
 
