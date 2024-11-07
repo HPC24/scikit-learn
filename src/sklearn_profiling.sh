@@ -25,7 +25,8 @@ CWD=$(pwd)
 # which implementation of the lloyd algorithm that is used inside sklearn
 IMPLEMENTATION="assign_centroids"
 
-C_COMPILER_FLAGS="-O3 -march=native -mtune=native"
+C_COMPILER_FLAGS="-march=native -mtune=native"
+export C_COMPILER_FLAGS=${C_COMPILER_FLAGS}
 
 if [ ${IMPLEMENTATION} == "assign_centroids" ]; then
     echo "Using custom assign_centroids function"

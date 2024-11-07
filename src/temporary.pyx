@@ -136,9 +136,6 @@ cdef double simd_double(
 
     sum_vector = _mm256_setzero_pd()
 
-    
-    printf("Beginning of loop simd ")
-    fflush(stdout)
     for i in range(0, rem_iterator, 4):
 
         X_partial = _mm256_load_pd(&X[i])
@@ -147,17 +144,12 @@ cdef double simd_double(
         difference = _mm256_mul_pd(difference, difference)
         sum_vector = _mm256_add_pd(sum_vector, difference)
 
-    printf("Start of summation")
-    fflush(stdout)
-
     upper = _mm256_castpd256_pd128(sum_vector)        # [a0, a1]
     lower = _mm256_extractf128_pd(sum_vector, bit_lane)   # [a2, a3]
     result = _mm_add_pd(lower, upper)           # [(a0 + a2), (a1 + a3)]
     result = _mm_hadd_pd(result, result)        # [(a0 + a2) + (a1 + a3), (a0 + a2) + (a1 + a3)]
     distance = _mm_cvtsd_f64(result) 
 
-    printf("Beginning of remainder")
-    fflush(stdout)
     for i in range(rem_iterator, n_features):
         diff = X[i] - centers_old[i]
         distance += diff * diff
@@ -228,8 +220,6 @@ cdef void simd_distance_calculation_double(
 
         for cluster in range(n_clusters):
 
-            printf("Starting SIMD Distance Calculation ")
-            fflush(stdout)
             distance = simd_double(X[point], centers_old[cluster], n_features)
 
             if distance < min_sq_dist:
@@ -241,8 +231,6 @@ cdef void simd_distance_calculation_double(
         sample_weight_value = sample_weight[point]
         weight_in_clusters_partial[label] += sample_weight_value
 
-        printf("Starting Accumulation in centers_new_partial ")
-        fflush(stdout)
         simd_partial_cluster_double(X[point], &centers_new_partial[row_offset], sample_weight_value, n_features)
 
 
@@ -346,3 +334,200 @@ cdef extern from "immintrin.h" nogil:
     __m128 _mm_add_ps(__m128 a, __m128 b)              # Add two __m128d vectors element-wise
     __m128 _mm_hadd_ps(__m128 a, __m128 b)             # Horizontal add of two __m128d vectors
     float _mm_cvtss_f32(__m128 a)                       # Extract the lower double from __m128d
+
+
+
+
+
+cdef void simd_partial_cluster_float(
+    const float[::1] X,
+    float* centers_new_partial,
+    float sample_weight_value,
+    int n_features) noexcept nogil:
+
+    cdef: 
+        int i, remaining, rem_iterator
+        __m512 centers, X_partial, weight_vec
+    
+    remaining = n_features % 16
+    rem_iterator = n_features - remaining
+
+    weight_vec = _mm512_set1_ps(sample_weight_value)
+
+    for i in range(0, rem_iterator, 16):
+
+        centers = _mm512_load_ps(&centers_new_partial[i])   # load 4 values of the partial centers vector into a register
+        X_partial = _mm512_load_ps(&X[i])                   # load 4 values of the point that is being processed into a register
+        X_partial = _mm512_mul_ps(X_partial, weight_vec)    # multiply the point values with the sample weight
+        centers = _mm512_add_ps(centers, X_partial)         # add the point values to the centers
+        _mm512_store_ps(&centers_new_partial[i], centers)   # Load values into the old centers_new_partial vector
+
+    for i in range(rem_iterator, n_features):
+        centers_new_partial[i] += X[i] * sample_weight_value
+
+
+cdef float simd_float(
+    const float[::1] X,
+    const float[::1] centers_old,
+    const int n_features) noexcept nogil:
+
+    cdef:
+        int i, remaining, rem_iterator
+        __m512 sum_vector, X_partial, centers_partial, difference
+        float distance, diff
+
+    remaining = n_features % 16
+    rem_iterator = n_features - remaining
+
+    sum_vector = _mm512_setzero_ps()
+
+    for i in range(0, rem_iterator, 16):
+
+        X_partial = _mm512_load_ps(&X[i])
+        centers_partial = _mm512_load_ps(&centers_old[i])
+        difference = _mm512_sub_ps(X_partial, centers_partial)
+        difference = _mm512_mul_ps(difference, difference)
+        sum_vector = _mm512_add_ps(sum_vector, difference)
+
+    distance = _mm512_reduce_add_ps(sum_vector)
+
+    for i in range(rem_iterator, n_features):
+        diff = X[i] - centers_old[i]
+        distance += diff * diff
+
+    return distance
+
+
+cdef void simd_partial_cluster_double(
+    const double[::1] X,
+    double* centers_new_partial,
+    double sample_weight_value,
+    int n_features) noexcept nogil:
+
+    cdef: 
+        int i, remaining, rem_iterator
+        __m512d centers, X_partial, weight_vec
+    
+    remaining = n_features % 8
+    rem_iterator = n_features - remaining
+
+    weight_vec = _mm512_set1_pd(sample_weight_value)
+
+    for i in range(0, rem_iterator, 8):
+
+        centers = _mm512_load_pd(&centers_new_partial[i])   # load 4 values of the partial centers vector into a register
+        X_partial = _mm512_load_pd(&X[i])                   # load 4 values of the point that is being processed into a register
+        X_partial = _mm512_mul_pd(X_partial, weight_vec)    # multiply the point values with the sample weight
+        centers = _mm512_add_pd(centers, X_partial)         # add the point values to the centers
+        _mm512_store_pd(&centers_new_partial[i], centers)   # Load values into the old centers_new_partial vector
+
+    for i in range(rem_iterator, n_features):
+        centers_new_partial[i] += X[i] * sample_weight_value
+
+
+cdef double simd_double(
+    const double[::1] X,
+    const double[::1] centers_old,
+    const int n_features) noexcept nogil:
+
+    cdef:
+        int i, remaining, rem_iterator, bit_lane = 1
+        __m512d sum_vector, X_partial, centers_partial, difference
+        double distance, diff
+
+    remaining = n_features % 8
+    rem_iterator = n_features - remaining
+
+    sum_vector = _mm512_setzero_pd()
+
+    for i in range(0, rem_iterator, 8):
+
+        X_partial = _mm512_load_pd(&X[i])
+        centers_partial = _mm512_load_pd(&centers_old[i])
+        difference = _mm512_sub_pd(X_partial, centers_partial)
+        difference = _mm512_mul_pd(difference, difference)
+        sum_vector = _mm512_add_pd(sum_vector, difference)
+
+    distance = _mm512_reduce_add_pd(sum_vector) 
+
+    for i in range(rem_iterator, n_features):
+        diff = X[i] - centers_old[i]
+        distance += diff * diff
+
+    return distance
+
+
+cdef void simd_distance_calculation_float(    
+    const float[:, ::1] X,
+    const float[:, ::1] centers_old,
+    const float[::1] sample_weight,
+    int[::1] labels,
+    float* centers_new_partial,
+    float* weight_in_clusters_partial,
+    const int n_samples_chunk,
+    const int n_clusters,
+    const int n_features,
+    float max_val) noexcept nogil:
+
+    
+    cdef:
+        int point, cluster, feature, label, row_offset
+        float distance, diff, min_sq_dist, sample_weight_value
+
+
+    for point in range(n_samples_chunk):
+        label = 0
+        min_sq_dist = max_val
+
+        for cluster in range(n_clusters):
+
+            distance = simd_float(X[point], centers_old[cluster], n_features)
+
+            if distance < min_sq_dist:
+                min_sq_dist = distance
+                label = cluster
+        
+        labels[point] = label
+        row_offset = label * n_features
+        sample_weight_value = sample_weight[point]
+        weight_in_clusters_partial[label] += sample_weight_value
+
+        simd_partial_cluster_float(X[point], &centers_new_partial[row_offset], sample_weight_value, n_features)
+
+
+cdef void simd_distance_calculation_double(    
+    const double[:, ::1] X,
+    const double[:, ::1] centers_old,
+    const double[::1] sample_weight,
+    int[::1] labels,
+    double* centers_new_partial,
+    double* weight_in_clusters_partial,
+    const int n_samples_chunk,
+    const int n_clusters,
+    const int n_features,
+    double max_val) noexcept nogil:
+
+    
+    cdef:
+        int point, cluster, feature, label, row_offset
+        double distance, diff, min_sq_dist, sample_weight_value
+
+
+    for point in range(n_samples_chunk):
+        label = 0
+        min_sq_dist = max_val
+
+        for cluster in range(n_clusters):
+
+            distance = simd_double(X[point], centers_old[cluster], n_features)
+
+            if distance < min_sq_dist:
+                min_sq_dist = distance
+                label = cluster
+        
+        labels[point] = label
+        row_offset = label * n_features
+        sample_weight_value = sample_weight[point]
+        weight_in_clusters_partial[label] += sample_weight_value
+
+        simd_partial_cluster_double(X[point], &centers_new_partial[row_offset], sample_weight_value, n_features)

@@ -16,6 +16,7 @@ from ..utils._openmp_helpers cimport omp_init_lock
 from ..utils._openmp_helpers cimport omp_destroy_lock
 from ..utils._openmp_helpers cimport omp_set_lock
 from ..utils._openmp_helpers cimport omp_unset_lock
+from ..utils._openmp_helpers cimport omp_get_thread_num
 from ..utils.extmath import row_norms
 from ..utils._cython_blas cimport _gemm
 from ..utils._cython_blas cimport RowMajor, Trans, NoTrans
@@ -120,8 +121,7 @@ cdef void * aligned_alloc(size_t alignment, size_t size) noexcept nogil:
 
     # Allocate aligned memory
     if posix_memalign(&ptr, alignment, size) != 0:
-        printf("Wrong memory allocation")
-
+        pass
     # Initialize allocated memory to zero
     memset(ptr, 0, size)
     
@@ -132,8 +132,7 @@ cdef void * aligned_malloc(size_t alignment, size_t size) noexcept nogil:
 
     # Allocate aligned memory
     if posix_memalign(&ptr, alignment, size) != 0:
-        printf("Wrong memory allocation")
-    
+        pass
     return ptr
 
 

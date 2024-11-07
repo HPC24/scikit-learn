@@ -11,7 +11,8 @@ from sklearn.metrics import confusion_matrix
 
 
 chunk_sizes = [4, 8 , 16, 32, 64, 128, 256, 512, 1024]
-TIMING_ITERATIONS = 5
+#chunk_sizes = [256]
+TIMING_ITERATIONS = 1
 KMEANS_INIT="random"
 KMEANS_N_INIT=1
 N_CLUSTER = 10
@@ -73,8 +74,8 @@ def fit_kmeans(kmeans, data) -> float:
     
 def main():
     
-    # custom_cache_dir = "/scratch/kurs_2024_sose_hpc/kurs_2024_sose_hpc_11/data"
-    custom_cache_dir = "/home/joshua/Projects/HPC_Project/data"
+    custom_cache_dir = "/scratch/kurs_2024_sose_hpc/kurs_2024_sose_hpc_11/data"
+    # custom_cache_dir = "/home/joshua/Projects/HPC_Project/data"
     cmd_args = parse_args()
     
     output_dir = pathlib.Path(cmd_args.output_dir)
