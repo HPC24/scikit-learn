@@ -721,8 +721,7 @@ cdef void assign_centroids(
             row_offset_lock = cluster * n_features
 
             for j_lock in range(n_features):
-                centers_new[row_offset_lock, j_lock] += centers_new_partial[row_offset_lock + j_lock]
-
+                centers_new[cluster, j_lock] += centers_new_partial[row_offset_lock + j_lock]
 
             # if floating is float:
             #     simd_lock_partial_add_float(centers_new[row_offset_lock], &centers_new_partial[row_offset_lock], n_features)
