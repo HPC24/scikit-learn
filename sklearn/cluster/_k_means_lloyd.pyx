@@ -685,7 +685,7 @@ cdef void assign_centroids(
 
             samples = end - start
 
-            distance_calculation_float(
+            distance_calculation(
                 X[start:end],
                 centers_old,
                 sample_weight[start:end],
