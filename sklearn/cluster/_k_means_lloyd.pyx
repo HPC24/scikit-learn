@@ -31,11 +31,11 @@ cdef extern from "stdlib.h" nogil:
 
 cdef extern from "immintrin.h" nogil:
     # AVX-512 vector types
-    cdef struct __m512:
+    ctypedef struct __m512:
         pass
-    cdef struct __m512d:
+    ctypedef struct __m512d:
         pass
-    cdef struct __m512i:
+    ctypedef struct __m512i:
         pass
 
     # Load and store functions for aligned data
