@@ -15,7 +15,7 @@
 #SBATCH --error=%u.log.%j.err
 
 OUTPUT_DIR="./out"
-OUTPUT_FILE="sklearn_simd"
+OUTPUT_FILE="sklearn_lock_simd"
 BUILD_DIR="/home/kurs_2024_sose_hpc/kurs_2024_sose_hpc_11/scikit-learn"
 
 CONDA_ENV="sklearn-env"
