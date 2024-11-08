@@ -15,7 +15,7 @@
 #SBATCH --error=%u.log.%j.err
 
 OUTPUT_DIR="./out"
-OUTPUT_FILE="sklearn_lock_simd"
+OUTPUT_FILE="sklearn"
 BUILD_DIR="/home/kurs_2024_sose_hpc/kurs_2024_sose_hpc_11/scikit-learn"
 
 CONDA_ENV="sklearn-env"
@@ -23,7 +23,7 @@ PYTHON_FILE="timing.py"
 CWD=$(pwd)
 
 # which implementation of the lloyd algorithm that is used inside sklearn
-IMPLEMENTATION="assign_centroids"
+IMPLEMENTATION=""
 
 C_COMPILER_FLAGS="-march=native -mtune=native"
 export C_COMPILER_FLAGS=${C_COMPILER_FLAGS}
