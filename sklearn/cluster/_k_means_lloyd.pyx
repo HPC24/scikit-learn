@@ -26,44 +26,44 @@ from ._k_means_common cimport _relocate_empty_clusters_sparse
 from ._k_means_common cimport _average_centers, _center_shift
 
 cdef extern from "stdlib.h" nogil:
-    int posix_memalign(void **memptr, size_t alignment, size_t size)
+    int posix_memalign(void **memptr, size_t alignment, size_t size) noexcept
 
 
 cdef extern from "immintrin.h" nogil:
     # AVX-512 vector types
-    ctypedef struct __m512:
+    cdef struct __m512:
         pass
-    ctypedef struct __m512d:
+    cdef struct __m512d:
         pass
-    ctypedef struct __m512i:
+    cdef struct __m512i:
         pass
 
     # Load and store functions for aligned data
-    __m512 _mm512_load_ps(const float * mem_addr)
-    void _mm512_store_ps(float * mem_addr, __m512 a)
-    __m512d _mm512_load_pd(const double * mem_addr)
-    void _mm512_store_pd(double * mem_addr, __m512d a)
-    __m512i _mm512_load_si512(const int * mem_addr)
-    void _mm512_store_si512(void * mem_addr, __m512i a)
+    __m512 _mm512_load_ps(const float * mem_addr) noexcept
+    void _mm512_store_ps(float * mem_addr, __m512 a) noexcept
+    __m512d _mm512_load_pd(const double * mem_addr) noexcept
+    void _mm512_store_pd(double * mem_addr, __m512d a) noexcept
+    __m512i _mm512_load_si512(const int * mem_addr) noexcept
+    void _mm512_store_si512(void * mem_addr, __m512i a) noexcept
 
     # Arithmetic operations
-    __m512 _mm512_add_ps(__m512 a, __m512 b)
-    __m512 _mm512_sub_ps(__m512 a, __m512 b)
-    __m512 _mm512_mul_ps(__m512 a, __m512 b)
-    __m512 _mm512_div_ps(__m512 a, __m512 b)
-    __m512 _mm512_fmadd_ps(__m512 a, __m512 b, __m512 c)
-    __m512 _mm512_setzero_ps()
-    __m512 _mm512_set1_ps(float a)
-    float _mm512_reduce_add_ps (__m512 a)
+    __m512 _mm512_add_ps(__m512 a, __m512 b) noexcept
+    __m512 _mm512_sub_ps(__m512 a, __m512 b) noexcept
+    __m512 _mm512_mul_ps(__m512 a, __m512 b) noexcept
+    __m512 _mm512_div_ps(__m512 a, __m512 b) noexcept
+    __m512 _mm512_fmadd_ps(__m512 a, __m512 b, __m512 c) noexcept
+    __m512 _mm512_setzero_ps() noexcept
+    __m512 _mm512_set1_ps(float a) noexcept
+    float _mm512_reduce_add_ps (__m512 a) noexcept
 
-    __m512d _mm512_add_pd(__m512d a, __m512d b)
-    __m512d _mm512_sub_pd(__m512d a, __m512d b)
-    __m512d _mm512_mul_pd(__m512d a, __m512d b)
-    __m512d _mm512_div_pd(__m512d a, __m512d b)
-    __m512d _mm512_fmadd_pd(__m512d a, __m512d b, __m512d c)
-    __m512d _mm512_setzero_pd()
-    __m512d _mm512_set1_pd(double a)
-    double _mm512_reduce_add_pd(__m512d a)
+    __m512d _mm512_add_pd(__m512d a, __m512d b) noexcept
+    __m512d _mm512_sub_pd(__m512d a, __m512d b) noexcept
+    __m512d _mm512_mul_pd(__m512d a, __m512d b) noexcept
+    __m512d _mm512_div_pd(__m512d a, __m512d b) noexcept
+    __m512d _mm512_fmadd_pd(__m512d a, __m512d b, __m512d c) noexcept
+    __m512d _mm512_setzero_pd() noexcept
+    __m512d _mm512_set1_pd(double a) noexcept
+    double _mm512_reduce_add_pd(__m512d a) noexcept
 
 
     # AVX-256 vector types
@@ -79,41 +79,41 @@ cdef extern from "immintrin.h" nogil:
         pass
 
     # Load and store functions for aligned data
-    __m256 _mm256_load_ps(const void * mem_addr)
-    void _mm256_store_ps(void * mem_addr, __m256 a)
-    __m256d _mm256_load_pd(const void* mem_addr)
-    void _mm256_store_pd(void * mem_addr, __m256d a)
-    __m256i _mm256_load_si256(const void * mem_addr)
-    void _mm256_store_si256(void * mem_addr, __m256i a)
+    __m256 _mm256_load_ps(const void * mem_addr) noexcept
+    void _mm256_store_ps(void * mem_addr, __m256 a) noexcept
+    __m256d _mm256_load_pd(const void* mem_addr) noexcept
+    void _mm256_store_pd(void * mem_addr, __m256d a) noexcept
+    __m256i _mm256_load_si256(const void * mem_addr) noexcept
+    void _mm256_store_si256(void * mem_addr, __m256i a) noexcept
 
     # Arithmetic operations
-    __m256 _mm256_add_ps(__m256 a, __m256 b)
-    __m256 _mm256_sub_ps(__m256 a, __m256 b)
-    __m256 _mm256_mul_ps(__m256 a, __m256 b)
-    __m256 _mm256_div_ps(__m256 a, __m256 b)
-    __m256 _mm256_fmadd_ps(__m256 a, __m256 b, __m256 c)
-    __m256 _mm256_setzero_ps()
-    __m256 _mm256_set1_ps(float a)
+    __m256 _mm256_add_ps(__m256 a, __m256 b) noexcept
+    __m256 _mm256_sub_ps(__m256 a, __m256 b) noexcept
+    __m256 _mm256_mul_ps(__m256 a, __m256 b) noexcept
+    __m256 _mm256_div_ps(__m256 a, __m256 b) noexcept
+    __m256 _mm256_fmadd_ps(__m256 a, __m256 b, __m256 c) noexcept
+    __m256 _mm256_setzero_ps() noexcept
+    __m256 _mm256_set1_ps(float a) noexcept
 
-    __m256d _mm256_add_pd(__m256d a, __m256d b)
-    __m256d _mm256_sub_pd(__m256d a, __m256d b)
-    __m256d _mm256_mul_pd(__m256d a, __m256d b)
-    __m256d _mm256_div_pd(__m256d a, __m256d b)
-    __m256d _mm256_fmadd_pd(__m256d a, __m256d b, __m256d c)
-    __m256d _mm256_setzero_pd()
-    __m256d _mm256_set1_pd(double a)
+    __m256d _mm256_add_pd(__m256d a, __m256d b) noexcept
+    __m256d _mm256_sub_pd(__m256d a, __m256d b) noexcept
+    __m256d _mm256_mul_pd(__m256d a, __m256d b) noexcept
+    __m256d _mm256_div_pd(__m256d a, __m256d b) noexcept
+    __m256d _mm256_fmadd_pd(__m256d a, __m256d b, __m256d c) noexcept
+    __m256d _mm256_setzero_pd() noexcept
+    __m256d _mm256_set1_pd(double a) noexcept
 
-    __m128d _mm256_castpd256_pd128(__m256d a)             # Cast 256-bit __m256d to 128-bit __m128d
-    __m128d _mm256_extractf128_pd(__m256d a, int imm8)    # Extract upper 128 bits from 256-bit __m256d
-    __m128d _mm_add_pd(__m128d a, __m128d b)              # Add two __m128d vectors element-wise
-    __m128d _mm_hadd_pd(__m128d a, __m128d b)             # Horizontal add of two __m128d vectors
-    double _mm_cvtsd_f64(__m128d a)                       # Extract the lower double from __m128d
+    __m128d _mm256_castpd256_pd128(__m256d a) noexcept             # Cast 256-bit __m256d to 128-bit __m128d
+    __m128d _mm256_extractf128_pd(__m256d a, int imm8) noexcept    # Extract upper 128 bits from 256-bit __m256d
+    __m128d _mm_add_pd(__m128d a, __m128d b) noexcept              # Add two __m128d vectors element-wise
+    __m128d _mm_hadd_pd(__m128d a, __m128d b) noexcept             # Horizontal add of two __m128d vectors
+    double _mm_cvtsd_f64(__m128d a) noexcept                       # Extract the lower double from __m128d
 
-    __m128 _mm256_castps256_ps128(__m256 a)             # Cast 256-bit __m256d to 128-bit __m128d
-    __m128 _mm256_extractf128_ps(__m256 a, int imm8)    # Extract upper 128 bits from 256-bit __m256d
-    __m128 _mm_add_ps(__m128 a, __m128 b)              # Add two __m128d vectors element-wise
-    __m128 _mm_hadd_ps(__m128 a, __m128 b)             # Horizontal add of two __m128d vectors
-    float _mm_cvtss_f32(__m128 a)                       # Extract the lower double from __m128d
+    __m128 _mm256_castps256_ps128(__m256 a) noexcept             # Cast 256-bit __m256d to 128-bit __m128d
+    __m128 _mm256_extractf128_ps(__m256 a, int imm8) noexcept    # Extract upper 128 bits from 256-bit __m256d
+    __m128 _mm_add_ps(__m128 a, __m128 b) noexcept              # Add two __m128d vectors element-wise
+    __m128 _mm_hadd_ps(__m128 a, __m128 b) noexcept             # Horizontal add of two __m128d vectors
+    float _mm_cvtss_f32(__m128 a) noexcept                       # Extract the lower double from __m128d
 
 
 cdef void * aligned_alloc(size_t alignment, size_t size) noexcept nogil:

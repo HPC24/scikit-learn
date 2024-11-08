@@ -635,3 +635,14 @@ cdef void assign_centroids(
         free(weight_in_clusters_partial)
     
     omp_destroy_lock(&lock)
+
+
+
+
+
+    ctypedef struct __m512:
+        pass
+    ctypedef struct __m512d:
+        pass
+    ctypedef struct __m512i:
+        pass
