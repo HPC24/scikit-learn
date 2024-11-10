@@ -748,3 +748,43 @@ cdef void assign_centroids(
         free(weight_in_clusters_partial)
     
     omp_destroy_lock(&lock)
+
+
+cdef void distance_calculation(
+    const floating[:, ::1] X,
+    const floating[:, ::1] centers_old,
+    const floating[::1] sample_weight,
+    int[::1] labels,
+    floating* centers_new_partial,
+    floating* weight_in_clusters_partial,
+    const int n_samples_chunk,
+    const int n_clusters,
+    const int n_features,
+    floating max_val) noexcept nogil:
+
+    cdef:
+        int point, cluster, feature, label, row_offset
+        floating distance, diff, min_sq_dist, sample_weight_value
+
+    for point in range(n_samples_chunk):
+        label = 0
+        min_sq_dist = max_val
+
+        for cluster in range(n_clusters):
+            distance = 0
+
+            for feature in range(n_features):
+                diff = X[point, feature] - centers_old[cluster, feature]
+                distance += diff * diff
+
+            if distance < min_sq_dist:
+                min_sq_dist = distance
+                label = cluster
+        
+        labels[point] = label
+        row_offset = label * n_features
+        sample_weight_value = sample_weight[point]
+        weight_in_clusters_partial[label] += sample_weight_value
+
+        for feature in range(n_features):
+            centers_new_partial[row_offset + feature] += X[point, feature] * sample_weight_value
