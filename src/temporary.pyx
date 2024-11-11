@@ -788,3 +788,64 @@ cdef void distance_calculation(
 
         for feature in range(n_features):
             centers_new_partial[row_offset + feature] += X[point, feature] * sample_weight_value
+
+
+ # count remainder chunk in total number of chunks
+        n_chunks += n_samples != n_chunks * n_samples_chunk
+
+        # number of threads should not be bigger than number of chunks
+        n_threads = min(n_threads, n_chunks)
+
+        if update_centers:
+            memset(&centers_new[0, 0], 0, n_clusters * n_features * sizeof(floating))
+            memset(&weight_in_clusters[0], 0, n_clusters * sizeof(floating))
+            omp_init_lock(&lock)
+
+        with nogil, parallel(num_threads=n_threads):
+            # thread local buffers
+            centers_new_chunk = <floating*> calloc(n_clusters * n_features, sizeof(floating))
+            weight_in_clusters_chunk = <floating*> calloc(n_clusters, sizeof(floating))
+            pairwise_distances_chunk = <floating*> malloc(n_samples_chunk * n_clusters * sizeof(floating))
+
+            for chunk_idx in prange(n_chunks, schedule='static'):
+                start = chunk_idx * n_samples_chunk
+                if chunk_idx == n_chunks - 1 and n_samples_rem > 0:
+                    end = start + n_samples_rem
+                else:
+                    end = start + n_samples_chunk
+
+                _update_chunk_dense(
+                    X[start: end],
+                    sample_weight[start: end],
+                    centers_old,
+                    centers_squared_norms,
+                    labels[start: end],
+                    centers_new_chunk,
+                    weight_in_clusters_chunk,
+                    pairwise_distances_chunk,
+                    update_centers)
+
+            # reduction from local buffers.
+            if update_centers:
+                # The lock is necessary to avoid race conditions when aggregating
+                # info from different thread-local buffers.
+                omp_set_lock(&lock)
+                for j in range(n_clusters):
+                    weight_in_clusters[j] += weight_in_clusters_chunk[j]
+                    for k in range(n_features):
+                        centers_new[j, k] += centers_new_chunk[j * n_features + k]
+
+                omp_unset_lock(&lock)
+
+            free(centers_new_chunk)
+            free(weight_in_clusters_chunk)
+            free(pairwise_distances_chunk)
+
+        if update_centers:
+            omp_destroy_lock(&lock)
+            _relocate_empty_clusters_dense(
+                X, sample_weight, centers_old, centers_new, weight_in_clusters, labels
+            )
+
+            _average_centers(centers_new, weight_in_clusters)
+            _center_shift(centers_old, centers_new, center_shift)

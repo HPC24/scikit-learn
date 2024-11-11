@@ -127,6 +127,11 @@ def lloyd_iter_chunked_dense(
 
         int j, k
 
+    cdef:
+        # Variables for Loop unrolling
+        int n_features_unrolled, n_iter_rem
+        int n_clusters_unrolled, n_cluster_rem
+
         floating[::1] centers_squared_norms = row_norms(centers_old, squared=True)
 
         floating *centers_new_chunk
@@ -206,6 +211,13 @@ def lloyd_iter_chunked_dense(
         # count remainder chunk in total number of chunks
         n_chunks += n_samples != n_chunks * n_samples_chunk
 
+        # Calculate how many iterations need to be done for the unrolled Loop and how many remain
+        n_features_unrolled = n_features // 4 # use 4 as 64 byte cache and 2 * 4 * sizeof(double) = 64
+        n_iter_rem = n_features % 4
+
+        n_clusters_unrolled = n_clusters // 4
+        n_cluster_rem = n_clusters % 4 
+
         # number of threads should not be bigger than number of chunks
         n_threads = min(n_threads, n_chunks)
 
@@ -236,7 +248,11 @@ def lloyd_iter_chunked_dense(
                     centers_new_chunk,
                     weight_in_clusters_chunk,
                     pairwise_distances_chunk,
-                    update_centers)
+                    update_centers,
+                    n_clusters_unrolled,
+                    n_cluster_rem,
+                    n_features_unrolled,
+                    n_iter_rem)
 
             # reduction from local buffers.
             if update_centers:
@@ -365,6 +381,7 @@ cdef void assign_centroids(
     n_features_unrolled = n_features // 4
     n_iter_rem = n_features % 4
 
+    # Pointer to the memory location 
     # cdef floating* distances = <floating*> calloc(n_samples * n_clusters, sizeof(floating))
     cdef floating* centers_new_partial
     cdef floating* weight_in_clusters_partial
@@ -404,17 +421,13 @@ cdef void assign_centroids(
                 )
 
         omp_set_lock(&lock)
+
         for cluster in range(n_clusters):
             weight_in_clusters[cluster] += weight_in_clusters_partial[cluster]
             row_offset_lock = cluster * n_features
 
             for j_lock in range(n_features):
                 centers_new[cluster, j_lock] += centers_new_partial[row_offset_lock + j_lock]
-
-            # if floating is float:
-            #    simd_lock_partial_add_float(centers_new[cluster], &centers_new_partial[row_offset_lock], n_features)
-            # else:
-            #    simd_lock_partial_add_double(centers_new[cluster], &centers_new_partial[row_offset_lock], n_features)
 
         omp_unset_lock(&lock)
 
@@ -553,7 +566,11 @@ cdef void _update_chunk_dense(
         floating *centers_new,                      # OUT
         floating *weight_in_clusters,               # OUT
         floating *pairwise_distances,               # OUT
-        bint update_centers) noexcept nogil:
+        bint update_centers,
+        const int n_clusters_unrolled,
+        const int n_cluster_rem,
+        const int n_features_unrolled,
+        const int n_iter_rem) noexcept nogil:
     """K-means combined EM step for one dense data chunk.
 
     Compute the partial contribution of a single data chunk to the labels and
@@ -565,7 +582,17 @@ cdef void _update_chunk_dense(
         int n_features = centers_old.shape[1]
 
         floating sq_dist, min_sq_dist
+        floating sample_weight_value
         int i, j, k, label
+        int row_offset
+
+    # pointers pairwise distance calculation
+    cdef floating* pairwise_distances_ptr
+    cdef const floating* centers_squared_norms_ptr
+    
+    # pointer for centers_new values update
+    cdef floating* centers_new_ptr = <floating*>NULL
+    cdef const floating* X_ptr
 
     # Instead of computing the full pairwise squared distances matrix,
     # ||X - C||² = ||X||² - 2 X.C^T + ||C||², we only need to store
@@ -579,26 +606,61 @@ cdef void _update_chunk_dense(
             # the pairwise distance has i * n_cluster points (distance from every point to every cluster)
             pairwise_distances[i * n_clusters + j] = centers_squared_norms[j]
 
+    # loop unrolled version
+    for i in range(n_samples):
+        pairwise_distances_ptr = &pairwise_distances[i * n_clusters]
+        centers_squared_norms_ptr = &centers_squared_norms[0]
+        for j in range(n_clusters_unrolled):
+            pairwise_distances_ptr[0] += centers_squared_norms_ptr[0]
+            pairwise_distances_ptr[1] += centers_squared_norms_ptr[1]
+            pairwise_distances_ptr[2] += centers_squared_norms_ptr[2]
+            pairwise_distances_ptr[3] += centers_squared_norms_ptr[3]
+
+            pairwise_distances_ptr += 4
+            centers_squared_norms_ptr += 4
+
+        for j in range(n_cluster_rem):
+            pairwise_distances_ptr[j] += centers_squared_norms_ptr[j]
+
     # pairwise_distances += -2 * X.dot(C.T)
     _gemm(RowMajor, NoTrans, Trans, n_samples, n_clusters, n_features,
           -2.0, &X[0, 0], n_features, &centers_old[0, 0], n_features,
           1.0, pairwise_distances, n_clusters)
 
     for i in range(n_samples):
-        min_sq_dist = pairwise_distances[i * n_clusters]
+        row_offset = i * n_clusters
+        min_sq_dist = pairwise_distances[row_offset]
         label = 0
         for j in range(1, n_clusters):
-            sq_dist = pairwise_distances[i * n_clusters + j]
+            sq_dist = pairwise_distances[row_offset + j]
             if sq_dist < min_sq_dist:
                 min_sq_dist = sq_dist
                 label = j
         labels[i] = label
 
+        # if update_centers:
+            # weight_in_clusters[label] += sample_weight[i]
+            # for k in range(n_features):
+                # centers_new[label * n_features + k] += X[i, k] * sample_weight[i]
+
+        # loop unrolled version
         if update_centers:
             weight_in_clusters[label] += sample_weight[i]
-            for k in range(n_features):
-                centers_new[label * n_features + k] += X[i, k] * sample_weight[i]
+            sample_weight_value = sample_weight[i]
+            centers_new_ptr = &centers_new_ptr[label * n_features]
+            X_ptr = &X[i, 0]
 
+            for k in range(n_features_unrolled):
+                centers_new_ptr[0] += X_ptr[0] * sample_weight_value
+                centers_new_ptr[1] += X_ptr[1] * sample_weight_value
+                centers_new_ptr[2] += X_ptr[2] * sample_weight_value
+                centers_new_ptr[3] += X_ptr[3] * sample_weight_value
+
+                centers_new_ptr += 4
+                X_ptr += 4
+
+            for k in range(n_iter_rem):
+                centers_new_ptr[k] += X_ptr[k] * sample_weight_value
 
 def lloyd_iter_chunked_sparse(
         X,                                   # IN
