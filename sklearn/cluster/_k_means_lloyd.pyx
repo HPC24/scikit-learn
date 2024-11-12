@@ -138,6 +138,8 @@ def lloyd_iter_chunked_dense(
         floating *weight_in_clusters_chunk
         floating *pairwise_distances_chunk
 
+        int byte_alignment = 64
+
         omp_lock_t lock
 
 
@@ -228,9 +230,9 @@ def lloyd_iter_chunked_dense(
 
         with nogil, parallel(num_threads=n_threads):
             # thread local buffers
-            centers_new_chunk = <floating*> calloc(n_clusters * n_features, sizeof(floating))
-            weight_in_clusters_chunk = <floating*> calloc(n_clusters, sizeof(floating))
-            pairwise_distances_chunk = <floating*> malloc(n_samples_chunk * n_clusters * sizeof(floating))
+            centers_new_chunk = <floating*> aligned_alloc(byte_alignment, n_clusters * n_features * sizeof(floating))
+            weight_in_clusters_chunk = <floating*> aligned_alloc(byte_alignment, n_clusters * sizeof(floating))
+            pairwise_distances_chunk = <floating*> aligned_malloc(byte_alignment, n_samples_chunk * n_clusters * sizeof(floating))
 
             for chunk_idx in prange(n_chunks, schedule='static'):
                 start = chunk_idx * n_samples_chunk
@@ -600,11 +602,11 @@ cdef void _update_chunk_dense(
     # depends on the centers.
     # pairwise_distances = ||C||²
     # Only iterates over all the sample in the chunk
-    for i in range(n_samples):
-        for j in range(n_clusters):
+    # for i in range(n_samples):
+        # for j in range(n_clusters):
             # adds the ||C||² for every data point as this is independent 
             # the pairwise distance has i * n_cluster points (distance from every point to every cluster)
-            pairwise_distances[i * n_clusters + j] = centers_squared_norms[j]
+            # pairwise_distances[i * n_clusters + j] = centers_squared_norms[j]
 
     # loop unrolled version
     for i in range(n_samples):
@@ -647,7 +649,7 @@ cdef void _update_chunk_dense(
         if update_centers:
             weight_in_clusters[label] += sample_weight[i]
             sample_weight_value = sample_weight[i]
-            centers_new_ptr = &centers_new_ptr[label * n_features]
+            centers_new_ptr = &centers_new[label * n_features]
             X_ptr = &X[i, 0]
 
             for k in range(n_features_unrolled):
