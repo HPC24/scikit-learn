@@ -613,16 +613,16 @@ cdef void _update_chunk_dense(
         pairwise_distances_ptr = &pairwise_distances[i * n_clusters]
         centers_squared_norms_ptr = &centers_squared_norms[0]
         for j in range(n_clusters_unrolled):
-            pairwise_distances_ptr[0] += centers_squared_norms_ptr[0]
-            pairwise_distances_ptr[1] += centers_squared_norms_ptr[1]
-            pairwise_distances_ptr[2] += centers_squared_norms_ptr[2]
-            pairwise_distances_ptr[3] += centers_squared_norms_ptr[3]
+            pairwise_distances_ptr[0] = centers_squared_norms_ptr[0]
+            pairwise_distances_ptr[1] = centers_squared_norms_ptr[1]
+            pairwise_distances_ptr[2] = centers_squared_norms_ptr[2]
+            pairwise_distances_ptr[3] = centers_squared_norms_ptr[3]
 
             pairwise_distances_ptr += 4
             centers_squared_norms_ptr += 4
 
         for j in range(n_cluster_rem):
-            pairwise_distances_ptr[j] += centers_squared_norms_ptr[j]
+            pairwise_distances_ptr[j] = centers_squared_norms_ptr[j]
 
     # pairwise_distances += -2 * X.dot(C.T)
     _gemm(RowMajor, NoTrans, Trans, n_samples, n_clusters, n_features,
